@@ -776,82 +776,77 @@ def clear_ohlcv_cache():
 
 
 _categories_loaded = False
-_nifty50_set = set()
-_niftynext50_set = set()
-_nifty100_set = set()
-_nifty200_set = set()
-_nifty500_set = set()
-_midcap150_set = set()
-_smallcap250_set = set()
+_symbol_to_categories = {}
 
-def load_category_sets():
-    global _categories_loaded, _nifty50_set, _niftynext50_set, _nifty100_set, _nifty200_set, _nifty500_set, _midcap150_set, _smallcap250_set
+def load_all_categories():
+    global _categories_loaded, _symbol_to_categories
     if _categories_loaded:
         return
     
-    try:
-        nifty50 = get_nifty50_symbols(live_fetch=False)
-        _nifty50_set = {s.replace("NSE:", "").replace("-EQ", "").strip().upper() for s in nifty50}
-    except Exception:
-        pass
-
-    try:
-        niftynext50 = get_index_constituents("Nifty Next 50", live_fetch=False)
-        _niftynext50_set = {s.replace("NSE:", "").replace("-EQ", "").strip().upper() for s in niftynext50}
-    except Exception:
-        pass
-
-    try:
-        nifty100 = get_index_constituents("Nifty 100", live_fetch=False)
-        _nifty100_set = {s.replace("NSE:", "").replace("-EQ", "").strip().upper() for s in nifty100}
-    except Exception:
-        pass
-
-    try:
-        nifty200 = get_nifty200_symbols(live_fetch=False)
-        _nifty200_set = {s.replace("NSE:", "").replace("-EQ", "").strip().upper() for s in nifty200}
-    except Exception:
-        pass
-
-    try:
-        nifty500 = get_nifty500_symbols(live_fetch=False)
-        _nifty500_set = {s.replace("NSE:", "").replace("-EQ", "").strip().upper() for s in nifty500}
-    except Exception:
-        pass
-
-    try:
-        midcap150 = get_index_constituents("Nifty Midcap 150", live_fetch=False)
-        _midcap150_set = {s.replace("NSE:", "").replace("-EQ", "").strip().upper() for s in midcap150}
-    except Exception:
-        pass
-
-    try:
-        smallcap250 = get_index_constituents("Nifty Smallcap 250", live_fetch=False)
-        _smallcap250_set = {s.replace("NSE:", "").replace("-EQ", "").strip().upper() for s in smallcap250}
-    except Exception:
-        pass
-
+    _symbol_to_categories = {}
+    
+    if not os.path.exists(PERMANENT_DIR):
+        _categories_loaded = True
+        return
+        
+    for filename in os.listdir(PERMANENT_DIR):
+        if not filename.endswith('.csv'):
+            continue
+        
+        # Skip segment catalogs and custom lists
+        if filename in ['equity_l.csv', 'sec_list.csv', 'custom_list.csv']:
+            continue
+            
+        name_clean = filename.replace('.csv', '').lower()
+        
+        # Mapping to user-friendly label formats
+        if name_clean == 'nifty50':
+            cat_label = '50'
+        elif name_clean == 'niftynext50':
+            cat_label = 'Next 50'
+        elif name_clean == 'nifty100':
+            cat_label = '100'
+        elif name_clean == 'nifty200':
+            cat_label = '200'
+        elif name_clean == 'nifty500':
+            cat_label = 'nse500'
+        elif name_clean == 'niftymidcap150':
+            cat_label = 'mid'
+        elif name_clean == 'niftysmallcap250':
+            cat_label = 'small'
+        else:
+            cat_label = name_clean.replace('nifty', '').replace('list', '').capitalize()
+            if not cat_label:
+                cat_label = name_clean.capitalize()
+                
+        file_path = os.path.join(PERMANENT_DIR, filename)
+        try:
+            df = pd.read_csv(file_path)
+            col = 'Symbol' if 'Symbol' in df.columns else ('SYMBOL' if 'SYMBOL' in df.columns else None)
+            if col is None and not df.empty:
+                col = df.columns[0]
+                
+            if col is not None:
+                symbols = [str(s).strip().upper() for s in df[col].tolist() if pd.notna(s)]
+                for sym in symbols:
+                    clean_sym = sym.replace("NSE:", "").replace("-EQ", "").replace(".NS", "").replace("-INDEX", "").strip().upper()
+                    if clean_sym not in _symbol_to_categories:
+                        _symbol_to_categories[clean_sym] = []
+                    if cat_label not in _symbol_to_categories[clean_sym]:
+                        _symbol_to_categories[clean_sym].append(cat_label)
+        except Exception as e:
+            logger.debug(f"Could not load category file {filename}: {e}")
+            
     _categories_loaded = True
 
 def get_stock_categories_string(symbol):
-    load_category_sets()
+    load_all_categories()
     clean = symbol.replace("NSE:", "").replace("-EQ", "").replace(".NS", "").replace("-INDEX", "").strip().upper()
+    cats = _symbol_to_categories.get(clean, [])
     
-    cats = []
-    if clean in _nifty50_set:
-        cats.append("50")
-    if clean in _niftynext50_set:
-        cats.append("Next 50")
-    if clean in _nifty100_set:
-        cats.append("100")
-    if clean in _nifty200_set:
-        cats.append("200")
-    if clean in _nifty500_set:
-        cats.append("nse500")
-    if clean in _midcap150_set:
-        cats.append("mid")
-    if clean in _smallcap250_set:
-        cats.append("small")
-        
-    return ", ".join(cats) if cats else "Other"
+    # Prioritized sorting for standard index prefixes, followed by alphabetical order
+    priorities = {'50': 0, 'Next 50': 1, '100': 2, '200': 3, 'nse500': 4, 'mid': 5, 'small': 6}
+    sorted_cats = sorted(cats, key=lambda c: (priorities.get(c, 99), c))
+    
+    return ", ".join(sorted_cats) if sorted_cats else "Other"
 
