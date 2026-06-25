@@ -51,26 +51,6 @@ def send_telegram_message(message):
     except Exception as e:
         logger.error(f"Error sending message to Telegram: {e}")
 
-def send_split_telegram_message(title, lines, limit=3500):
-    """Groups lines and sends them as one or more Telegram messages under the character limit."""
-    current_chunk = [title] if title else []
-    current_length = sum(len(l) + 1 for l in current_chunk)
-    
-    for line in lines:
-        line_len = len(line) + 1
-        if current_length + line_len > limit:
-            if current_chunk:
-                send_telegram_message("\n".join(current_chunk))
-            current_chunk = [title + " (Cont.)"] if title else []
-            current_chunk.append(line)
-            current_length = sum(len(l) + 1 for l in current_chunk)
-        else:
-            current_chunk.append(line)
-            current_length += line_len
-            
-    if current_chunk:
-        send_telegram_message("\n".join(current_chunk))
-
 def send_telegram_document(file_path, caption):
     """Sends a document (CSV) via Telegram Bot API. Returns True if successful."""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
@@ -112,77 +92,77 @@ def run_scan():
             logger.warning(f"No symbols found for {SCAN_UNIVERSE}. Aborting scan.")
             return
 
-        send_telegram_message(f"🔍 *NSE Scanner v2 Dual Method Started:* {SCAN_UNIVERSE} ({SCAN_INTERVAL})\nScanning {len(symbols)} symbols...")
+        send_telegram_message(f"🚀 *NSE Scanner v2 Dual Method* | 🔍 *Started*\n📊 *Universe:* {SCAN_UNIVERSE} ({SCAN_INTERVAL})\nScanning {len(symbols)} symbols...")
         
         # Execute scanner
         results_df = scanner.scan_market(symbols, interval=SCAN_INTERVAL)
         
-        # Update signal tracker
-        import signal_tracker
-        new_entries, new_exits = signal_tracker.update_tracker(results_df, SCAN_UNIVERSE, SCAN_INTERVAL)
-        
-        # Immediate notification for exits
-        if new_exits:
-            exit_msgs = ["🔴 *SIGNAL COMPLETED (DROPPED OUT)*"]
-            for ex in new_exits:
-                ret_sign = "+" if ex["return_pct"] >= 0 else ""
-                ru_sign = "+" if ex["max_runup_pct"] >= 0 else ""
-                dd_sign = "+" if ex["max_drawdown_pct"] >= 0 else ""
-                exit_msgs.append(
-                    f"• *{ex['symbol']}* | Entry: ₹{ex['entry_price']:.2f} ({ex['entry_date']}) "
-                    f"→ Exit: ₹{ex['exit_price']:.2f}\n"
-                    f"  Return: *{ret_sign}{ex['return_pct']:.2f}%* | Max Run-up: {ru_sign}{ex['max_runup_pct']:.2f}% | Max DD: {dd_sign}{ex['max_drawdown_pct']:.2f}% | Duration: {ex['duration_days']:.1f} days"
-                )
-            send_telegram_message("\n".join(exit_msgs))
-        
         if not results_df.empty:
-            results_df = results_df.sort_values(by='Signal Time', ascending=False)
+            # Resolve Nifty 500 symbols to split results if scanning a larger universe
+            nifty500_symbols = data_loader.get_nifty500_symbols(live_fetch=LIVE_UNIVERSE_FETCH)
+            nifty500_clean = {sym.replace("NSE:", "").replace("-EQ", "") for sym in nifty500_symbols}
             
-            # Use Absolute Path for temporary CSV (Critical for system-level scheduling)
+            nifty500_df = results_df[results_df['Stock Name'].isin(nifty500_clean)]
+            other_df = results_df[~results_df['Stock Name'].isin(nifty500_clean)]
+            
+            datasets = []
+            if SCAN_UNIVERSE in ["Nifty 500", "Nifty 200", "Nifty 50", "Nifty Bank", "Nifty IT", "Nifty PSU Bank", "Nifty Private Bank"]:
+                # If we're scanning a universe that's already a subset of Nifty 500, don't split
+                datasets.append((results_df, SCAN_UNIVERSE))
+            else:
+                # We are scanning Total Cash Segment or another large universe
+                if not nifty500_df.empty:
+                    datasets.append((nifty500_df, f"{SCAN_UNIVERSE} (Nifty 500)"))
+                if not other_df.empty:
+                    datasets.append((other_df, f"{SCAN_UNIVERSE} (Non-Nifty 500)"))
+            
             base_dir = os.path.dirname(os.path.abspath(__file__))
-            filename = f"scan_results_{now.strftime('%Y%m%d_%H%M%S')}.csv"
-            file_path = os.path.join(base_dir, filename)
             
-            results_df.to_csv(file_path, index=False)
-            
-            # Generate Multi-Part Analysis Report
-            report_parts = reporter.generate_report(results_df, SCAN_UNIVERSE, SCAN_INTERVAL)
-            
-            # Send first part (with CSV if enabled, or as text if disabled)
-            if report_parts:
-                if SEND_CSV:
-                    caption = report_parts[0]
-                    success = send_telegram_document(file_path, caption)
-                    
-                    if not success:
-                        logger.warning("Caption upload failed. Triggering failsafe delivery...")
-                        simple_title = f"📊 Scan Results: {SCAN_UNIVERSE} ({now.strftime('%H:%M')})"
-                        send_telegram_document(file_path, simple_title)
-                        send_telegram_message(caption)
-                else:
-                    send_telegram_message(report_parts[0])
+            for df_subset, universe_label in datasets:
+                df_subset = df_subset.sort_values(by='Signal Time', ascending=False)
+                # Sanitize filename
+                safe_label = universe_label.replace(' ', '_').replace('(', '').replace(')', '')
+                filename = f"scan_results_{safe_label}_{now.strftime('%Y%m%d_%H%M%S')}.csv"
+                file_path = os.path.join(base_dir, filename)
                 
-                # Send remaining parts as follow-up messages
-                for part in report_parts[1:]:
-                    send_telegram_message(part)
+                df_subset.to_csv(file_path, index=False)
+                
+                # Generate Multi-Part Analysis Report
+                report_parts = reporter.generate_report(df_subset, universe_label, SCAN_INTERVAL)
+                
+                # Send first part (with CSV if enabled, or as text if disabled)
+                if report_parts:
+                    if SEND_CSV:
+                        caption = report_parts[0]
+                        success = send_telegram_document(file_path, caption)
+                        
+                        if not success:
+                            logger.warning("Caption upload failed. Triggering failsafe delivery...")
+                            simple_title = f"📊 Scan Results: {universe_label} ({now.strftime('%H:%M')})"
+                            send_telegram_document(file_path, simple_title)
+                            send_telegram_message(caption)
+                    else:
+                        send_telegram_message(report_parts[0])
+                    
+                    # Send remaining parts as follow-up messages
+                    for part in report_parts[1:]:
+                        send_telegram_message(part)
+                
+                # Cleanup
+                if os.path.exists(file_path):
+                    os.remove(file_path)
             
             logger.info(f"Results sent to Telegram: {len(results_df)} signals.")
-            
-            # Cleanup
-            if os.path.exists(file_path):
-                os.remove(file_path)
         else:
             if SEND_IF_EMPTY:
                 msg = (
-                    f"ℹ️ *Scan Completed*\n"
+                    f"🚀 *NSE Scanner v2 Dual Method*\n"
                     f"📊 *Universe:* {SCAN_UNIVERSE}\n"
                     f"⏰ *Timeframe:* {SCAN_INTERVAL}\n"
                     f"⚠️ No matches found at this time."
                 )
                 send_telegram_message(msg)
             logger.info("Scan complete - 0 signals found.")
-            
-
                 
     except Exception as e:
         logger.exception(f"Unexpected error in run_scan: {e}")

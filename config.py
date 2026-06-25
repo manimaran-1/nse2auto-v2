@@ -10,7 +10,7 @@ TELEGRAM_BOT_TOKEN = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
 TELEGRAM_CHAT_ID = (os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
 
 # --- SCANNER CONFIGURATION ---
-SCAN_UNIVERSE = os.environ.get("SCAN_UNIVERSE", "Nifty 500")
+SCAN_UNIVERSE = os.environ.get("SCAN_UNIVERSE", "Total Cash Segment")
 SCAN_INTERVAL = os.environ.get("SCAN_INTERVAL", "1h")
 SEND_IF_EMPTY = os.environ.get("SEND_IF_EMPTY", "True").lower() == "true"
 LIVE_UNIVERSE_FETCH = os.environ.get("LIVE_UNIVERSE_FETCH", "False").lower() == "true"

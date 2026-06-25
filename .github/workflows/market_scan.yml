@@ -30,7 +30,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          SCAN_UNIVERSE: ${{ vars.SCAN_UNIVERSE || 'Nifty 500' }}
+          SCAN_UNIVERSE: ${{ vars.SCAN_UNIVERSE || 'Total Cash Segment' }}
           SCAN_INTERVAL: ${{ vars.SCAN_INTERVAL || '1h' }}
           SEND_IF_EMPTY: ${{ vars.SEND_IF_EMPTY || 'True' }}
         run: |
