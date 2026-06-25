@@ -92,7 +92,7 @@ def run_scan():
             logger.warning(f"No symbols found for {SCAN_UNIVERSE}. Aborting scan.")
             return
 
-        send_telegram_message(f"🔍 *NSE Scanner 2.0 Started:* {SCAN_UNIVERSE} ({SCAN_INTERVAL})\nScanning {len(symbols)} symbols...")
+        send_telegram_message(f"🔍 *NSE Scanner v2 Dual Method Started:* {SCAN_UNIVERSE} ({SCAN_INTERVAL})\nScanning {len(symbols)} symbols...")
         
         # Execute scanner
         results_df = scanner.scan_market(symbols, interval=SCAN_INTERVAL)
