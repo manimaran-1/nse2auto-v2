@@ -45,3 +45,12 @@ TRIGGER_PORT = int(os.environ.get("TRIGGER_PORT", "8503"))
 SEND_CSV = os.environ.get("SEND_CSV", "False").lower() == "true"
 
 
+# --- LIQUIDITY CONFIGURATION ---
+MIN_PRICE = float(os.environ.get("MIN_PRICE", "20.0"))
+MIN_VOLUME_1D = int(os.environ.get("MIN_VOLUME_1D", "50000"))
+MIN_VOLUME_1H = int(os.environ.get("MIN_VOLUME_1H", "10000"))
+MIN_TURNOVER_1D = float(os.environ.get("MIN_TURNOVER_1D", "2500000.0")) # 25 Lakhs
+MIN_TURNOVER_1H = float(os.environ.get("MIN_TURNOVER_1H", "500000.0"))   # 5 Lakhs
+
+
+

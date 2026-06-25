@@ -467,6 +467,43 @@ live_universe = st.sidebar.checkbox(
 timeframe_options = ["1d", "1wk", "1mo", "1m", "5m", "15m", "1h"]
 selected_timeframe = st.sidebar.selectbox("Timeframe (Interval)", timeframe_options, index=timeframe_options.index("1h"))
 
+with st.sidebar.expander("💧 Liquidity Filters", expanded=False):
+    config.MIN_PRICE = st.number_input(
+        "Min Price (₹)",
+        min_value=0.0,
+        value=float(config.MIN_PRICE),
+        step=1.0,
+        help="Filter out penny stocks below this price.",
+    )
+    config.MIN_VOLUME_1D = st.number_input(
+        "Min Daily Vol (1d)",
+        min_value=0,
+        value=int(config.MIN_VOLUME_1D),
+        step=1000,
+        help="Min 20-day average volume for daily scan.",
+    )
+    config.MIN_VOLUME_1H = st.number_input(
+        "Min Hourly Vol (1h)",
+        min_value=0,
+        value=int(config.MIN_VOLUME_1H),
+        step=1000,
+        help="Min 20-period average volume for hourly scan.",
+    )
+    config.MIN_TURNOVER_1D = st.number_input(
+        "Min Daily Turnover (₹)",
+        min_value=0.0,
+        value=float(config.MIN_TURNOVER_1D),
+        step=50000.0,
+        help="Min 20-day average volume * LTP for daily scan.",
+    )
+    config.MIN_TURNOVER_1H = st.number_input(
+        "Min Hourly Turnover (₹)",
+        min_value=0.0,
+        value=float(config.MIN_TURNOVER_1H),
+        step=50000.0,
+        help="Min 20-period average volume * LTP for hourly scan.",
+    )
+
 st.sidebar.markdown("---")
 st.sidebar.subheader("📡 Data Source")
 data_source_options = ["yflib", "yfapi"]
