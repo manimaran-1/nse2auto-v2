@@ -572,7 +572,7 @@ def send_to_telegram(df: pd.DataFrame, universe: str, timeframe: str) -> bool:
         )
         return False
 
-    report_parts = reporter.generate_report(df, universe, timeframe, limit=20)
+    report_parts = reporter.generate_report(df, universe, timeframe, limit=len(df))
     if not report_parts:
         return False
 

@@ -124,7 +124,7 @@ def run_scan():
         )
         
         if not results_df.empty:
-            datasets = [(results_df, SCAN_UNIVERSE, 20)]
+            datasets = [(results_df, SCAN_UNIVERSE, len(results_df))]
             
             base_dir = os.path.dirname(os.path.abspath(__file__))
             
