@@ -773,3 +773,85 @@ def clear_ohlcv_cache():
                 pass
     logger.info(f"Cleared {count} OHLCV cache files")
     return count
+
+
+_categories_loaded = False
+_nifty50_set = set()
+_niftynext50_set = set()
+_nifty100_set = set()
+_nifty200_set = set()
+_nifty500_set = set()
+_midcap150_set = set()
+_smallcap250_set = set()
+
+def load_category_sets():
+    global _categories_loaded, _nifty50_set, _niftynext50_set, _nifty100_set, _nifty200_set, _nifty500_set, _midcap150_set, _smallcap250_set
+    if _categories_loaded:
+        return
+    
+    try:
+        nifty50 = get_nifty50_symbols(live_fetch=False)
+        _nifty50_set = {s.replace("NSE:", "").replace("-EQ", "").strip().upper() for s in nifty50}
+    except Exception:
+        pass
+
+    try:
+        niftynext50 = get_index_constituents("Nifty Next 50", live_fetch=False)
+        _niftynext50_set = {s.replace("NSE:", "").replace("-EQ", "").strip().upper() for s in niftynext50}
+    except Exception:
+        pass
+
+    try:
+        nifty100 = get_index_constituents("Nifty 100", live_fetch=False)
+        _nifty100_set = {s.replace("NSE:", "").replace("-EQ", "").strip().upper() for s in nifty100}
+    except Exception:
+        pass
+
+    try:
+        nifty200 = get_nifty200_symbols(live_fetch=False)
+        _nifty200_set = {s.replace("NSE:", "").replace("-EQ", "").strip().upper() for s in nifty200}
+    except Exception:
+        pass
+
+    try:
+        nifty500 = get_nifty500_symbols(live_fetch=False)
+        _nifty500_set = {s.replace("NSE:", "").replace("-EQ", "").strip().upper() for s in nifty500}
+    except Exception:
+        pass
+
+    try:
+        midcap150 = get_index_constituents("Nifty Midcap 150", live_fetch=False)
+        _midcap150_set = {s.replace("NSE:", "").replace("-EQ", "").strip().upper() for s in midcap150}
+    except Exception:
+        pass
+
+    try:
+        smallcap250 = get_index_constituents("Nifty Smallcap 250", live_fetch=False)
+        _smallcap250_set = {s.replace("NSE:", "").replace("-EQ", "").strip().upper() for s in smallcap250}
+    except Exception:
+        pass
+
+    _categories_loaded = True
+
+def get_stock_categories_string(symbol):
+    load_category_sets()
+    clean = symbol.replace("NSE:", "").replace("-EQ", "").replace(".NS", "").replace("-INDEX", "").strip().upper()
+    
+    cats = []
+    if clean in _nifty50_set:
+        cats.append("50")
+    if clean in _niftynext50_set:
+        cats.append("Next 50")
+    if clean in _nifty100_set:
+        cats.append("100")
+    if clean in _nifty200_set:
+        cats.append("200")
+    if clean in _nifty500_set:
+        cats.append("nse500")
+    if clean in _midcap150_set:
+        cats.append("mid")
+    if clean in _smallcap250_set:
+        cats.append("small")
+        
+    return ", ".join(cats) if cats else "Other"
+

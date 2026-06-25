@@ -44,7 +44,7 @@ def split_list_to_chunks(lines, limit):
         chunks.append("\n".join(current_chunk))
     return chunks
 
-def generate_report(df, universe, timeframe):
+def generate_report(df, universe, timeframe, limit=10):
     """
     NSE Market Analyst v2.9 - Technical Detail Refinement with Auto-Splitting.
     Returns: List of message strings formatted for Telegram.
@@ -119,8 +119,8 @@ def generate_report(df, universe, timeframe):
             + unique_df['MACD'].clip(0, 5) / 5 * 30
         ).fillna(0).clip(0, 100)
 
-        # 1. Top 20 Enhanced V3 Trades
-        top_ranked_enhanced = unique_df.nlargest(20, 'Enhanced_Score')
+        # 1. Top {limit} Enhanced V3 Trades
+        top_ranked_enhanced = unique_df.nlargest(limit, 'Enhanced_Score')
         for _, row in top_ranked_enhanced.iterrows():
             diff = row['Enhanced_Score'] - row['Classic_Score']
             sign = "+" if diff >= 0 else ""
@@ -128,8 +128,8 @@ def generate_report(df, universe, timeframe):
                 f"• *{row['Stock Name']}* | Enhanced: *{row['Enhanced_Score']:.1f}* | Classic: {row['Classic_Score']:.1f} (Δ: {sign}{diff:.1f})"
             )
 
-        # 2. Top 20 Classic 3-Factor Trades
-        top_ranked_classic = unique_df.nlargest(20, 'Classic_Score')
+        # 2. Top {limit} Classic 3-Factor Trades
+        top_ranked_classic = unique_df.nlargest(limit, 'Classic_Score')
         for _, row in top_ranked_classic.iterrows():
             top_classic_list.append(
                 f"• *{row['Stock Name']}* | Classic: *{row['Classic_Score']:.1f}* | Enhanced: {row['Enhanced_Score']:.1f}"
@@ -194,7 +194,7 @@ def generate_report(df, universe, timeframe):
         f"----------------------------------------"
     ]
     if top_trades_list:
-        p1_lines.append(f"💎 *TOP 20 HIGH-PROBABILITY TRADES*")
+        p1_lines.append(f"💎 *TOP {limit} HIGH-PROBABILITY TRADES*")
         p1_lines.extend(top_trades_list)
         p1_lines.append(f"----------------------------------------")
 
@@ -216,7 +216,7 @@ def generate_report(df, universe, timeframe):
     # --- BUILD PART 2 LINES ---
     p2_lines = []
     if top_classic_list:
-        p2_lines.append(f"🏆 *TOP 20 CLASSIC 3-FACTOR TRADES*")
+        p2_lines.append(f"🏆 *TOP {limit} CLASSIC 3-FACTOR TRADES*")
         p2_lines.extend(top_classic_list)
         p2_lines.append(f"----------------------------------------")
     

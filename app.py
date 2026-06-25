@@ -562,7 +562,7 @@ def send_to_telegram(df: pd.DataFrame, universe: str, timeframe: str) -> bool:
         )
         return False
 
-    report_parts = reporter.generate_report(df, universe, timeframe)
+    report_parts = reporter.generate_report(df, universe, timeframe, limit=20)
     if not report_parts:
         return False
 
@@ -727,10 +727,10 @@ if st.session_state.results_df is not None:
 
         # ── Derived sub-tables (Un-sliced, full sorted lists) ─────────
         top_classic_df_all = unique_df.sort_values(by="Classic_Score", ascending=False)[
-            ["Stock Name", "Classic_Score", "LTP", "Change_Pct", "SMI", "MACD"]
+            ["Stock Name", "Category", "Classic_Score", "LTP", "Change_Pct", "SMI", "MACD"]
         ]
 
-        enhanced_cols = ["Stock Name", "Enhanced_Score", "LTP", "Change_Pct",
+        enhanced_cols = ["Stock Name", "Category", "Enhanced_Score", "LTP", "Change_Pct",
                          "SMI", "MACD", "RVOL", "Rel Strength"]
         for extra in ("Volatility", "Vol-Adjusted RS"):
             if extra in unique_df.columns:
@@ -830,7 +830,7 @@ if st.session_state.results_df is not None:
                 compare_all_df["Enhanced_Score"] - compare_all_df["Classic_Score"]
             )
             show_cols = [
-                "Stock Name", "Classic_Score", "Enhanced_Score", "Score Difference",
+                "Stock Name", "Category", "Classic_Score", "Enhanced_Score", "Score Difference",
                 "LTP", "Change_Pct", "SMI", "MACD", "RVOL", "Rel Strength",
             ]
             for extra in ("Volatility", "Vol-Adjusted RS"):

@@ -109,27 +109,43 @@ def run_scan():
         )
         
         if not results_df.empty:
-            # Resolve Nifty 500 symbols to split results if scanning a larger universe
-            nifty500_symbols = data_loader.get_nifty500_symbols(live_fetch=LIVE_UNIVERSE_FETCH)
-            nifty500_clean = {sym.replace("NSE:", "").replace("-EQ", "") for sym in nifty500_symbols}
+            # Resolve Nifty 50, Nifty Next 50, and Nifty 500 symbols
+            nifty50_raw = data_loader.get_nifty50_symbols(live_fetch=LIVE_UNIVERSE_FETCH)
+            nifty50_set = {s.replace("NSE:", "").replace("-EQ", "") for s in nifty50_raw}
             
-            nifty500_df = results_df[results_df['Stock Name'].isin(nifty500_clean)]
-            other_df = results_df[~results_df['Stock Name'].isin(nifty500_clean)]
+            niftynext50_raw = data_loader.get_index_constituents("Nifty Next 50", live_fetch=LIVE_UNIVERSE_FETCH)
+            niftynext50_set = {s.replace("NSE:", "").replace("-EQ", "") for s in niftynext50_raw}
+            
+            nifty500_raw = data_loader.get_nifty500_symbols(live_fetch=LIVE_UNIVERSE_FETCH)
+            nifty500_set = {s.replace("NSE:", "").replace("-EQ", "") for s in nifty500_raw}
+            
+            nifty50_df = results_df[results_df['Stock Name'].isin(nifty50_set)]
+            niftynext50_df = results_df[results_df['Stock Name'].isin(niftynext50_set)]
+            midsmall_df = results_df[
+                results_df['Stock Name'].isin(nifty500_set)
+                & ~results_df['Stock Name'].isin(nifty50_set)
+                & ~results_df['Stock Name'].isin(niftynext50_set)
+            ]
+            other_df = results_df[~results_df['Stock Name'].isin(nifty500_set)]
             
             datasets = []
-            if SCAN_UNIVERSE in ["Nifty 500", "Nifty 200", "Nifty 50", "Nifty Bank", "Nifty IT", "Nifty PSU Bank", "Nifty Private Bank"]:
+            if SCAN_UNIVERSE in ["Nifty 500", "Nifty 200", "Nifty 50", "Nifty Bank", "Nifty IT", "Nifty PSU Bank", "Nifty Private Bank", "Nifty 100", "Nifty Next 50"]:
                 # If we're scanning a universe that's already a subset of Nifty 500, don't split
-                datasets.append((results_df, SCAN_UNIVERSE))
+                datasets.append((results_df, SCAN_UNIVERSE, 20))
             else:
                 # We are scanning Total Cash Segment or another large universe
-                if not nifty500_df.empty:
-                    datasets.append((nifty500_df, f"{SCAN_UNIVERSE} (Nifty 500)"))
+                if not nifty50_df.empty:
+                    datasets.append((nifty50_df, f"Nifty 50", 10))
+                if not niftynext50_df.empty:
+                    datasets.append((niftynext50_df, f"Nifty Next 50", 10))
+                if not midsmall_df.empty:
+                    datasets.append((midsmall_df, f"Nifty Mid/Smallcap", 10))
                 if not other_df.empty:
-                    datasets.append((other_df, f"{SCAN_UNIVERSE} (Non-Nifty 500)"))
+                    datasets.append((other_df, f"Other Cash Segment", 10))
             
             base_dir = os.path.dirname(os.path.abspath(__file__))
             
-            for df_subset, universe_label in datasets:
+            for df_subset, universe_label, limit in datasets:
                 df_subset = df_subset.sort_values(by='Signal Time', ascending=False)
                 # Sanitize filename
                 safe_label = universe_label.replace(' ', '_').replace('(', '').replace(')', '')
@@ -139,7 +155,7 @@ def run_scan():
                 df_subset.to_csv(file_path, index=False)
                 
                 # Generate Multi-Part Analysis Report
-                report_parts = reporter.generate_report(df_subset, universe_label, SCAN_INTERVAL)
+                report_parts = reporter.generate_report(df_subset, universe_label, SCAN_INTERVAL, limit=limit)
                 
                 # Send first part (with CSV if enabled, or as text if disabled)
                 if report_parts:

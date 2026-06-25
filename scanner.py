@@ -256,8 +256,12 @@ def check_conditions(df, symbol, nifty_df=None, regime_filter="None"):
             
             clean_symbol = symbol.replace("NSE:", "").replace("-EQ", "").replace(".NS", "").replace("-INDEX", "")
             rvol = round(float(v) / float(avg_v), 2) if avg_v > 0 else 1.0
+            
+            categories_str = data_loader.get_stock_categories_string(clean_symbol)
+            
             res = {
                 'Stock Name': clean_symbol,
+                'Category': categories_str,
                 'LTP': round(c, 2),
                 'Day Open': round(day_open_price, 2) if day_open_price else round(c, 2),
                 'Signal Time': idx.strftime('%d-%m-%Y %H:%M'),
