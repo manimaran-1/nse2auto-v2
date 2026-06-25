@@ -468,13 +468,6 @@ timeframe_options = ["1d", "1wk", "1mo", "1m", "5m", "15m", "1h"]
 selected_timeframe = st.sidebar.selectbox("Timeframe (Interval)", timeframe_options, index=timeframe_options.index("1h"))
 
 with st.sidebar.expander("💧 Liquidity Filters", expanded=False):
-    config.MIN_PRICE = st.number_input(
-        "Min Price (₹)",
-        min_value=0.0,
-        value=float(config.MIN_PRICE),
-        step=1.0,
-        help="Filter out penny stocks below this price.",
-    )
     config.MIN_VOLUME_1D = st.number_input(
         "Min Daily Vol (1d)",
         min_value=0,

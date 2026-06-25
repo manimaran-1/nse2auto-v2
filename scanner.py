@@ -125,7 +125,7 @@ def check_conditions(df, symbol, nifty_df=None):
             # --- Liquidity Filter ---
             min_vol = config.MIN_VOLUME_1D if not is_intraday else config.MIN_VOLUME_1H
             min_turnover = config.MIN_TURNOVER_1D if not is_intraday else config.MIN_TURNOVER_1H
-            if c < config.MIN_PRICE or avg_v < min_vol or (c * avg_v) < min_turnover:
+            if avg_v < min_vol or (c * avg_v) < min_turnover:
                 continue
 
             
