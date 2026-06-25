@@ -26,6 +26,8 @@ SCAN_UNIVERSE = config.SCAN_UNIVERSE
 SCAN_INTERVAL = config.SCAN_INTERVAL
 SEND_IF_EMPTY = config.SEND_IF_EMPTY
 LIVE_UNIVERSE_FETCH = config.LIVE_UNIVERSE_FETCH
+SEND_CSV = config.SEND_CSV
+
 
 def validate_config():
     """Ensure all required configuration is present."""
@@ -108,18 +110,19 @@ def run_scan():
             # Generate Multi-Part Analysis Report
             report_parts = reporter.generate_report(results_df, SCAN_UNIVERSE, SCAN_INTERVAL)
             
-            # Send first part as document caption with Failsafe
+            # Send first part (with CSV if enabled, or as text if disabled)
             if report_parts:
-                caption = report_parts[0]
-                success = send_telegram_document(file_path, caption)
-                
-                if not success:
-                    # FAILSAFE: If caption failed (too long or parse error), 
-                    # send file with simple title and Part 1 as a separate message.
-                    logger.warning("Caption upload failed. Triggering failsafe delivery...")
-                    simple_title = f"📊 Scan Results: {SCAN_UNIVERSE} ({now.strftime('%H:%M')})"
-                    send_telegram_document(file_path, simple_title)
-                    send_telegram_message(caption)
+                if SEND_CSV:
+                    caption = report_parts[0]
+                    success = send_telegram_document(file_path, caption)
+                    
+                    if not success:
+                        logger.warning("Caption upload failed. Triggering failsafe delivery...")
+                        simple_title = f"📊 Scan Results: {SCAN_UNIVERSE} ({now.strftime('%H:%M')})"
+                        send_telegram_document(file_path, simple_title)
+                        send_telegram_message(caption)
+                else:
+                    send_telegram_message(report_parts[0])
                 
                 # Send remaining parts as follow-up messages
                 for part in report_parts[1:]:

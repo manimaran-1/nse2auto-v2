@@ -400,10 +400,16 @@ try:
     _secrets = st.secrets
     BOT_TOKEN = _secrets.get("TELEGRAM_BOT_TOKEN", None) or config.TELEGRAM_BOT_TOKEN
     CHAT_ID   = _secrets.get("TELEGRAM_CHAT_ID",   None) or config.TELEGRAM_CHAT_ID
+    SEND_CSV  = _secrets.get("SEND_CSV", None)
+    if SEND_CSV is None:
+        SEND_CSV = config.SEND_CSV
+    else:
+        SEND_CSV = str(SEND_CSV).lower() == "true"
     _APP_PASSWORD = _secrets.get("password", None)
 except Exception:
     BOT_TOKEN = config.TELEGRAM_BOT_TOKEN
     CHAT_ID   = config.TELEGRAM_CHAT_ID
+    SEND_CSV  = config.SEND_CSV
     _APP_PASSWORD = None
 
 # ---------------------------------------------------------------------------
@@ -545,20 +551,27 @@ def send_to_telegram(df: pd.DataFrame, universe: str, timeframe: str) -> bool:
     if not report_parts:
         return False
 
-    csv_buffer = io.StringIO()
-    df.to_csv(csv_buffer, index=False)
-
-    doc_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
-    files = {"document": ("nse2_scan_results.csv", csv_buffer.getvalue())}
-    data  = {"chat_id": CHAT_ID, "caption": report_parts[0], "parse_mode": "Markdown"}
+    msg_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
     try:
-        resp = requests.post(doc_url, files=files, data=data, timeout=20)
-        if resp.status_code != 200:
-            st.error(f"Telegram Error (Doc): {resp.text}")
-            return False
+        if SEND_CSV:
+            csv_buffer = io.StringIO()
+            df.to_csv(csv_buffer, index=False)
 
-        msg_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            doc_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+            files = {"document": ("nse2_scan_results.csv", csv_buffer.getvalue())}
+            data  = {"chat_id": CHAT_ID, "caption": report_parts[0], "parse_mode": "Markdown"}
+
+            resp = requests.post(doc_url, files=files, data=data, timeout=20)
+            if resp.status_code != 200:
+                st.error(f"Telegram Error (Doc): {resp.text}")
+                return False
+        else:
+            resp = requests.post(msg_url, json={"chat_id": CHAT_ID, "text": report_parts[0], "parse_mode": "Markdown"}, timeout=15)
+            if resp.status_code != 200:
+                st.error(f"Telegram Error: {resp.text}")
+                return False
+
         for part in report_parts[1:]:
             requests.post(msg_url, json={"chat_id": CHAT_ID, "text": part, "parse_mode": "Markdown"}, timeout=15)
         return True

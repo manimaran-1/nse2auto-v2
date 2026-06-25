@@ -190,7 +190,7 @@ def generate_report(df, universe, timeframe):
 
     # --- BUILD PART 1 LINES ---
     p1_lines = [
-        f"🚀 *NSE Market Analysis Report* | 📊 *{universe}*",
+        f"🚀 *NSE Scanner v2 Dual Method* | 📊 *{universe}*",
         f"----------------------------------------"
     ]
     if top_trades_list:

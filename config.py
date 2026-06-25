@@ -41,3 +41,7 @@ STRATEGY_CONFIG = {
 # --- TRIGGER CONFIGURATION ---
 TRIGGER_PORT = int(os.environ.get("TRIGGER_PORT", "8503"))
 
+# --- TELEGRAM CSV CONFIGURATION ---
+SEND_CSV = os.environ.get("SEND_CSV", "False").lower() == "true"
+
+
