@@ -188,6 +188,25 @@ def generate_report(df, universe, timeframe, limit=10):
     avg_smi = df['SMI'].mean() if 'SMI' in df.columns else 0
     sentiment = get_sentiment(avg_smi, avg_rsi)
 
+    # Check if this universe should receive a detailed report
+    is_detailed = any(keyword in universe for keyword in ["500", "Total Cash"])
+
+    if not is_detailed:
+        p_lines = [
+            f"🚀 *NSE Scanner v2 Dual Method* | 📊 *{universe}*",
+            f"----------------------------------------"
+        ]
+        if top_trades_list:
+            p_lines.append(f"💎 *TOP {limit} HIGH-PROBABILITY TRADES*")
+            p_lines.extend(top_trades_list)
+            p_lines.append(f"----------------------------------------")
+        
+        if momentum_signature_list:
+            p_lines.append(f"🚀 *MOMENTUM SIGNATURE (BREAKOUT)*")
+            p_lines.extend(momentum_signature_list)
+            
+        return ["\n".join(p_lines)]
+
     # --- BUILD PART 1 LINES ---
     p1_lines = [
         f"🚀 *NSE Scanner v2 Dual Method* | 📊 *{universe}*",
