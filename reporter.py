@@ -124,15 +124,19 @@ def generate_report(df, universe, timeframe, limit=10):
         for _, row in top_ranked_enhanced.iterrows():
             diff = row['Enhanced_Score'] - row['Classic_Score']
             sign = "+" if diff >= 0 else ""
+            cats_str = row.get('Category', '')
+            cats_suffix = f" ({cats_str})" if cats_str else ""
             top_trades_list.append(
-                f"• *{row['Stock Name']}* | Enhanced: *{row['Enhanced_Score']:.1f}* | Classic: {row['Classic_Score']:.1f} (Δ: {sign}{diff:.1f})"
+                f"• *{row['Stock Name']}*{cats_suffix} | Enhanced: *{row['Enhanced_Score']:.1f}* | Classic: {row['Classic_Score']:.1f} (Δ: {sign}{diff:.1f})"
             )
 
         # 2. Top {limit} Classic 3-Factor Trades
         top_ranked_classic = unique_df.nlargest(limit, 'Classic_Score')
         for _, row in top_ranked_classic.iterrows():
+            cats_str = row.get('Category', '')
+            cats_suffix = f" ({cats_str})" if cats_str else ""
             top_classic_list.append(
-                f"• *{row['Stock Name']}* | Classic: *{row['Classic_Score']:.1f}* | Enhanced: {row['Enhanced_Score']:.1f}"
+                f"• *{row['Stock Name']}*{cats_suffix} | Classic: *{row['Classic_Score']:.1f}* | Enhanced: {row['Enhanced_Score']:.1f}"
             )
 
 
@@ -142,7 +146,9 @@ def generate_report(df, universe, timeframe, limit=10):
         sig_stocks = unique_df[unique_df['is_momentum_signature'] == True]
         for _, row in sig_stocks.iterrows():
             squeeze_icon = "🌀" if row.get('is_squeeze', False) else ""
-            momentum_signature_list.append(f"👉 🚀 *{row['Stock Name']}* {squeeze_icon}(RSI: {row['RSI']:.0f}, RS: {row.get('Rel Strength', 0):+.1f}, ADX: {row.get('ADX', 0)})")
+            cats_str = row.get('Category', '')
+            cats_suffix = f" ({cats_str})" if cats_str else ""
+            momentum_signature_list.append(f"👉 🚀 *{row['Stock Name']}*{cats_suffix} {squeeze_icon}(RSI: {row['RSI']:.0f}, RS: {row.get('Rel Strength', 0):+.1f}, ADX: {row.get('ADX', 0)})")
 
     # --- TOP CATEGORY PICKING WITH INDICATORS ---
     def get_top_with_val(col, label_fn=lambda x: f"{x:.1f}", limit=3):
