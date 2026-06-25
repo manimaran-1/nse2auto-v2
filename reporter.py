@@ -119,8 +119,8 @@ def generate_report(df, universe, timeframe, limit=10):
             + unique_df['MACD'].clip(0, 5) / 5 * 30
         ).fillna(0).clip(0, 100)
 
-        # 1. Top {limit} Enhanced V3 Trades
-        top_ranked_enhanced = unique_df.nlargest(limit, 'Enhanced_Score')
+        # 1. Top {limit} Enhanced V3 Trades (filtered to score > 85)
+        top_ranked_enhanced = unique_df[unique_df['Enhanced_Score'] > 85].nlargest(limit, 'Enhanced_Score')
         for _, row in top_ranked_enhanced.iterrows():
             diff = row['Enhanced_Score'] - row['Classic_Score']
             sign = "+" if diff >= 0 else ""
