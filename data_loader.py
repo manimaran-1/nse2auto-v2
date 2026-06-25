@@ -535,7 +535,7 @@ def fetch_data_yfinance(symbol, interval='1d'):
 
         # Forward-fill volume gaps (e.g. pre/post market NaN bars)
         # then drop rows that still have 0 or NaN volume (halted / bad data)
-        df['volume'] = df['volume'].fillna(method='ffill').fillna(0)
+        df['volume'] = df['volume'].ffill().fillna(0)
         df = df[df['volume'] > 0].copy()
 
         # Drop rows where price data is missing
@@ -593,7 +593,7 @@ def fetch_data_yf_lib(symbol, interval='1d'):
             df.index = df.index.tz_localize('UTC').tz_convert(IST)
 
         # Forward-fill volume gaps then drop zero/NaN volume bars
-        df['volume'] = pd.to_numeric(df['volume'], errors='coerce').fillna(method='ffill').fillna(0)
+        df['volume'] = pd.to_numeric(df['volume'], errors='coerce').ffill().fillna(0)
         df = df[df['volume'] > 0].copy()
         df = df.dropna(subset=['open', 'high', 'low', 'close'])
 
