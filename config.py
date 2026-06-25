@@ -52,3 +52,8 @@ INST_MIN_LISTING_AGE_DAYS = int(os.environ.get("INST_MIN_LISTING_AGE_DAYS", "180
 INST_REGIME_FILTER = os.environ.get("INST_REGIME_FILTER", "None")  # Options: "None", "Price > EMA 50", "Price > EMA 200"
 
 
+# --- CONCURRENCY CONFIGURATION ---
+MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "12"))
+
+
+

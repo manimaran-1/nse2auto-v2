@@ -389,7 +389,8 @@ if "results_df" not in st.session_state:
 if "scan_metadata" not in st.session_state:
     st.session_state.scan_metadata = {
         "universe": "", "timeframe": "", "data_source": "", "live_universe": False,
-        "enable_inst_filters": True, "min_turnover_crores": 10.0, "min_age_days": 180, "regime_filter": "None"
+        "enable_inst_filters": True, "min_turnover_crores": 10.0, "min_age_days": 180, "regime_filter": "None",
+        "max_workers": 12
     }
 if "password_correct" not in st.session_state:
     st.session_state.password_correct = False
@@ -472,6 +473,13 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("📡 Data Source")
 data_source_options = ["yflib", "yfapi"]
 selected_data_source = st.sidebar.selectbox("Data Fetch Method", data_source_options, index=1)
+max_workers = st.sidebar.slider(
+    "Concurrency (Workers)",
+    min_value=1,
+    max_value=24,
+    value=config.MAX_WORKERS,
+    help="Number of concurrent download threads for fetching stock data."
+)
 
 st.sidebar.markdown("---")
 with st.sidebar.expander("🏛️ Institutional Filters", expanded=True):
@@ -491,6 +499,7 @@ if (
     or min_turnover_crores != _meta.get("min_turnover_crores", 10.0)
     or min_age_days        != _meta.get("min_age_days", 180)
     or regime_filter       != _meta.get("regime_filter", "None")
+    or max_workers         != _meta.get("max_workers", 12)
 ):
     st.session_state.results_df = None
     st.session_state.scan_metadata = {
@@ -502,6 +511,7 @@ if (
         "min_turnover_crores": min_turnover_crores,
         "min_age_days": min_age_days,
         "regime_filter": regime_filter,
+        "max_workers": max_workers,
     }
 
 st.sidebar.markdown("---")
@@ -697,7 +707,8 @@ if st.button("🚀 Start Market Scan", width="stretch"):
                 enable_inst_filters=enable_inst_filters,
                 min_turnover_crores=min_turnover_crores,
                 min_age_days=min_age_days,
-                regime_filter=regime_filter
+                regime_filter=regime_filter,
+                max_workers=max_workers
             )
             progress_bar.empty()
 

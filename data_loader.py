@@ -470,17 +470,29 @@ _YF_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, l
 _YF_TIMEOUT = 15
 
 
-def _yf_fetch_chart(yf_symbol, interval='1h', range_str='60d'):
-    """Fetch raw Yahoo Finance chart data via direct API."""
+def _yf_fetch_chart(yf_symbol, interval='1h', range_str='60d', retries=5):
+    """Fetch raw Yahoo Finance chart data via direct API with retries and backoff on 429."""
     url = f"{_YF_BASE}/{yf_symbol}?interval={interval}&range={range_str}"
     req = urllib.request.Request(url, headers={"User-Agent": _YF_UA})
-    try:
-        with urllib.request.urlopen(req, timeout=_YF_TIMEOUT) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        return data["chart"]["result"][0]
-    except Exception as e:
-        logger.debug(f"Yahoo Finance API error for {yf_symbol}: {e}")
-        return None
+    
+    backoff = 1.0
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(req, timeout=_YF_TIMEOUT) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data["chart"]["result"][0]
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                logger.warning(f"⚠️ Yahoo rate limit (429) on {yf_symbol}. Backoff {backoff}s before retry {attempt+1}/{retries}...")
+                time.sleep(backoff)
+                backoff *= 2.0
+            else:
+                logger.debug(f"Yahoo Finance API HTTP error {e.code} for {yf_symbol}: {e}")
+                break
+        except Exception as e:
+            logger.debug(f"Yahoo Finance API error for {yf_symbol}: {e}")
+            time.sleep(0.5)
+    return None
 
 
 def fetch_data_yfinance(symbol, interval='1d'):
@@ -710,7 +722,9 @@ def fetch_data_batch(symbols, interval='1d', max_workers=4, progress_callback=No
     logger.info(f"Batch fetch: {total} symbols ({ds}, {max_workers} workers)")
 
     def _fetch_one(sym):
-        time.sleep(0.15)  # Delay to prevent hitting rate limits
+        # Scale delay dynamically based on workers to maintain a safe aggregate request rate
+        delay = max(0.05, 0.04 * max_workers)
+        time.sleep(delay)
         df = fetch_data(sym, interval=interval, data_source=ds)
         return sym, df
 

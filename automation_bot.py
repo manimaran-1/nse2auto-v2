@@ -31,6 +31,8 @@ ENABLE_INST_FILTERS = config.ENABLE_INST_FILTERS
 INST_MIN_TURNOVER_CRORES = config.INST_MIN_TURNOVER_CRORES
 INST_MIN_LISTING_AGE_DAYS = config.INST_MIN_LISTING_AGE_DAYS
 INST_REGIME_FILTER = config.INST_REGIME_FILTER
+MAX_WORKERS = config.MAX_WORKERS
+
 
 
 def validate_config():
@@ -105,7 +107,8 @@ def run_scan():
             enable_inst_filters=ENABLE_INST_FILTERS,
             min_turnover_crores=INST_MIN_TURNOVER_CRORES,
             min_age_days=INST_MIN_LISTING_AGE_DAYS,
-            regime_filter=INST_REGIME_FILTER
+            regime_filter=INST_REGIME_FILTER,
+            max_workers=MAX_WORKERS
         )
         
         if not results_df.empty:

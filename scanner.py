@@ -303,7 +303,7 @@ def scan_symbol(symbol, interval, nifty_df=None):
 
 def scan_market(symbols, interval='1d', progress_callback=None,
                 enable_inst_filters=True, min_turnover_crores=10.0,
-                min_age_days=180, regime_filter="None"):
+                min_age_days=180, regime_filter="None", max_workers=12):
     """
     Executes a market scan by pre-fetching symbols in a batch and processing technical indicators.
     """
@@ -322,7 +322,7 @@ def scan_market(symbols, interval='1d', progress_callback=None,
     stock_data = data_loader.fetch_data_batch(
         symbols, 
         interval=interval, 
-        max_workers=4, 
+        max_workers=max_workers, 
         progress_callback=progress_callback
     )
 
