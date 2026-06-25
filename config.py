@@ -45,11 +45,10 @@ TRIGGER_PORT = int(os.environ.get("TRIGGER_PORT", "8503"))
 SEND_CSV = os.environ.get("SEND_CSV", "False").lower() == "true"
 
 
-# --- LIQUIDITY CONFIGURATION ---
-MIN_VOLUME_1D = int(os.environ.get("MIN_VOLUME_1D", "10000"))
-MIN_VOLUME_1H = int(os.environ.get("MIN_VOLUME_1H", "2000"))
-MIN_TURNOVER_1D = float(os.environ.get("MIN_TURNOVER_1D", "0.0"))
-MIN_TURNOVER_1H = float(os.environ.get("MIN_TURNOVER_1H", "0.0"))
-
+# --- INSTITUTIONAL FILTERS ---
+ENABLE_INST_FILTERS = os.environ.get("ENABLE_INST_FILTERS", "True").lower() == "true"
+INST_MIN_TURNOVER_CRORES = float(os.environ.get("INST_MIN_TURNOVER_CRORES", "10.0"))
+INST_MIN_LISTING_AGE_DAYS = int(os.environ.get("INST_MIN_LISTING_AGE_DAYS", "180"))
+INST_REGIME_FILTER = os.environ.get("INST_REGIME_FILTER", "None")  # Options: "None", "Price > EMA 50", "Price > EMA 200"
 
 

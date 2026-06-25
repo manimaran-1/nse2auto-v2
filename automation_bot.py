@@ -27,6 +27,10 @@ SCAN_INTERVAL = config.SCAN_INTERVAL
 SEND_IF_EMPTY = config.SEND_IF_EMPTY
 LIVE_UNIVERSE_FETCH = config.LIVE_UNIVERSE_FETCH
 SEND_CSV = config.SEND_CSV
+ENABLE_INST_FILTERS = config.ENABLE_INST_FILTERS
+INST_MIN_TURNOVER_CRORES = config.INST_MIN_TURNOVER_CRORES
+INST_MIN_LISTING_AGE_DAYS = config.INST_MIN_LISTING_AGE_DAYS
+INST_REGIME_FILTER = config.INST_REGIME_FILTER
 
 
 def validate_config():
@@ -95,7 +99,14 @@ def run_scan():
         send_telegram_message(f"🚀 *NSE Scanner v2 Dual Method* | 🔍 *Started*\n📊 *Universe:* {SCAN_UNIVERSE} ({SCAN_INTERVAL})\nScanning {len(symbols)} symbols...")
         
         # Execute scanner
-        results_df = scanner.scan_market(symbols, interval=SCAN_INTERVAL)
+        results_df = scanner.scan_market(
+            symbols, 
+            interval=SCAN_INTERVAL,
+            enable_inst_filters=ENABLE_INST_FILTERS,
+            min_turnover_crores=INST_MIN_TURNOVER_CRORES,
+            min_age_days=INST_MIN_LISTING_AGE_DAYS,
+            regime_filter=INST_REGIME_FILTER
+        )
         
         if not results_df.empty:
             # Resolve Nifty 500 symbols to split results if scanning a larger universe

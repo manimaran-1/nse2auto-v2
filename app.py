@@ -388,7 +388,8 @@ if "results_df" not in st.session_state:
     st.session_state.results_df = None
 if "scan_metadata" not in st.session_state:
     st.session_state.scan_metadata = {
-        "universe": "", "timeframe": "", "data_source": "", "live_universe": False
+        "universe": "", "timeframe": "", "data_source": "", "live_universe": False,
+        "enable_inst_filters": True, "min_turnover_crores": 10.0, "min_age_days": 180, "regime_filter": "None"
     }
 if "password_correct" not in st.session_state:
     st.session_state.password_correct = False
@@ -467,42 +468,17 @@ live_universe = st.sidebar.checkbox(
 timeframe_options = ["1d", "1wk", "1mo", "1m", "5m", "15m", "1h"]
 selected_timeframe = st.sidebar.selectbox("Timeframe (Interval)", timeframe_options, index=timeframe_options.index("1h"))
 
-with st.sidebar.expander("💧 Liquidity Filters", expanded=False):
-    config.MIN_VOLUME_1D = st.number_input(
-        "Min Daily Vol (1d)",
-        min_value=0,
-        value=int(config.MIN_VOLUME_1D),
-        step=1000,
-        help="Min 20-day average volume for daily scan.",
-    )
-    config.MIN_VOLUME_1H = st.number_input(
-        "Min Hourly Vol (1h)",
-        min_value=0,
-        value=int(config.MIN_VOLUME_1H),
-        step=1000,
-        help="Min 20-period average volume for hourly scan.",
-    )
-    config.MIN_TURNOVER_1D = st.number_input(
-        "Min Daily Turnover (₹)",
-        min_value=0.0,
-        value=float(config.MIN_TURNOVER_1D),
-        step=50000.0,
-        help="Min 20-day average volume * LTP for daily scan.",
-    )
-    config.MIN_TURNOVER_1H = st.number_input(
-        "Min Hourly Turnover (₹)",
-        min_value=0.0,
-        value=float(config.MIN_TURNOVER_1H),
-        step=50000.0,
-        help="Min 20-period average volume * LTP for hourly scan.",
-    )
-
 st.sidebar.markdown("---")
 st.sidebar.subheader("📡 Data Source")
 data_source_options = ["yflib", "yfapi"]
 selected_data_source = st.sidebar.selectbox("Data Fetch Method", data_source_options, index=1)
 
-# (Limits and thresholds are now customized locally inside each tab)
+st.sidebar.markdown("---")
+with st.sidebar.expander("🏛️ Institutional Filters", expanded=True):
+    enable_inst_filters = st.checkbox("Enable Liquidity & Age Funnel", value=True, help="Filters out thinly traded assets and new listings")
+    min_turnover_crores = st.number_input("Min Daily Turnover (₹ Crores)", min_value=0.1, max_value=1000.0, value=10.0, step=1.0, help="Average daily Rupee turnover over the last 20 trading days.")
+    min_age_days = st.number_input("Min Listing Age (Days)", min_value=30, max_value=3650, value=180, step=30, help="Minimum age since listing.")
+    regime_filter = st.selectbox("Trend Regime Filter", ["None", "Price > EMA 50", "Price > EMA 200"], index=0, help="Filter out stocks below their long-term trendline.")
 
 # Reset results when any scan parameter changes
 _meta = st.session_state.scan_metadata
@@ -511,6 +487,10 @@ if (
     or selected_timeframe  != _meta["timeframe"]
     or selected_data_source != _meta["data_source"]
     or live_universe       != _meta["live_universe"]
+    or enable_inst_filters != _meta.get("enable_inst_filters", True)
+    or min_turnover_crores != _meta.get("min_turnover_crores", 10.0)
+    or min_age_days        != _meta.get("min_age_days", 180)
+    or regime_filter       != _meta.get("regime_filter", "None")
 ):
     st.session_state.results_df = None
     st.session_state.scan_metadata = {
@@ -518,6 +498,10 @@ if (
         "timeframe": selected_timeframe,
         "data_source": selected_data_source,
         "live_universe": live_universe,
+        "enable_inst_filters": enable_inst_filters,
+        "min_turnover_crores": min_turnover_crores,
+        "min_age_days": min_age_days,
+        "regime_filter": regime_filter,
     }
 
 st.sidebar.markdown("---")
@@ -707,7 +691,13 @@ if st.button("🚀 Start Market Scan", width="stretch"):
 
         with st.spinner(f"Scanning {len(symbols)} stocks… please wait."):
             results_df = scanner.scan_market(
-                symbols, interval=selected_timeframe, progress_callback=_update_progress
+                symbols, 
+                interval=selected_timeframe, 
+                progress_callback=_update_progress,
+                enable_inst_filters=enable_inst_filters,
+                min_turnover_crores=min_turnover_crores,
+                min_age_days=min_age_days,
+                regime_filter=regime_filter
             )
             progress_bar.empty()
 

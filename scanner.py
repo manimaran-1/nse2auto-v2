@@ -12,7 +12,45 @@ logger = logging.getLogger(__name__)
 
 IST = pytz.timezone('Asia/Kolkata')
 
-def check_conditions(df, symbol, nifty_df=None):
+def check_liquidity_and_age(df, interval='1d', min_turnover=100_000_000, min_age_days=180):
+    if df.empty or len(df) < 5:
+        return False, 0.0, 0
+    
+    # 1. Listing Age check
+    earliest_date = df.index[0]
+    latest_date = df.index[-1]
+    history_days = (latest_date - earliest_date).days
+    
+    # Determine lookback limit for the interval to see if it's limited by fetch range
+    res_map_days = {
+        '1m': 5, '5m': 60, '15m': 60, '30m': 60, '60m': 60, '1h': 60,
+        '1d': 730, '1wk': 1825, '1mo': 3650
+    }
+    max_lookback = res_map_days.get(interval, 60)
+    
+    is_seasoned = False
+    if history_days >= min_age_days:
+        is_seasoned = True
+    elif history_days >= (max_lookback - 5): # buffer
+        is_seasoned = True
+        
+    if not is_seasoned:
+        return False, 0.0, history_days
+        
+    # 2. Daily Turnover check
+    try:
+        daily_df = df.groupby(df.index.date).agg({'close': 'last', 'volume': 'sum'})
+        daily_turnover = daily_df['close'] * daily_df['volume']
+        avg_turnover = daily_turnover.tail(20).mean() if not daily_turnover.empty else 0.0
+    except Exception:
+        avg_turnover = 0.0
+        
+    if avg_turnover < min_turnover:
+        return False, avg_turnover, history_days
+        
+    return True, avg_turnover, history_days
+
+def check_conditions(df, symbol, nifty_df=None, regime_filter="None"):
     """
     Checks the defined strategy criteria against the dataframe.
     Returns a list of matching results.
@@ -41,6 +79,13 @@ def check_conditions(df, symbol, nifty_df=None):
     adx = indicators.calculate_adx(df)
     atr = indicators.calculate_atr(df)
     
+    # Calculate EMA for trend regime if requested
+    ema_regime = None
+    if regime_filter == "Price > EMA 50":
+        ema_regime = indicators.calculate_ema(df, 50)
+    elif regime_filter == "Price > EMA 200":
+        ema_regime = indicators.calculate_ema(df, 200)
+
     results = []
     
     # Intraday heuristic
@@ -122,12 +167,6 @@ def check_conditions(df, symbol, nifty_df=None):
             if pd.isna(atr_val) or atr_val <= 0:
                 atr_val = c * 0.02  # fallback: 2% of price
 
-            # --- Liquidity Filter ---
-            min_vol = config.MIN_VOLUME_1D if not is_intraday else config.MIN_VOLUME_1H
-            min_turnover = config.MIN_TURNOVER_1D if not is_intraday else config.MIN_TURNOVER_1H
-            if avg_v < min_vol or (c * avg_v) < min_turnover:
-                continue
-
             
             # Volatility calculation
             vol = rolling_vol.iloc[pos]
@@ -148,6 +187,12 @@ def check_conditions(df, symbol, nifty_df=None):
             
             if not (price_above_entry_emas and stoch_rsi_ok and smi_ok and macd_ok and vwap_ok):
                 continue
+
+            # Trend Regime Filter check
+            if ema_regime is not None:
+                if len(ema_regime) > pos and not pd.isna(ema_regime.iloc[pos]):
+                    if c <= ema_regime.iloc[pos]:
+                        continue
  
             # --- Tier 2: Momentum Signature (The Gold Badge) ---
             # 1. Relative Performance (Stock vs Nifty)
@@ -252,7 +297,9 @@ def scan_symbol(symbol, interval, nifty_df=None):
     df = data_loader.fetch_data(symbol, interval=interval)
     return check_conditions(df, symbol, nifty_df=nifty_df)
 
-def scan_market(symbols, interval='1d', progress_callback=None):
+def scan_market(symbols, interval='1d', progress_callback=None,
+                enable_inst_filters=True, min_turnover_crores=10.0,
+                min_age_days=180, regime_filter="None"):
     """
     Executes a market scan by pre-fetching symbols in a batch and processing technical indicators.
     """
@@ -276,6 +323,9 @@ def scan_market(symbols, interval='1d', progress_callback=None):
     )
 
     logger.info("Processing scanned symbols...")
+    filtered_symbols_count = 0
+    min_turnover_val = min_turnover_crores * 10_000_000 # 1 Crore = 10,000,000 Rupees
+    
     for symbol in symbols:
         try:
             norm_sym = data_loader.normalize_symbol(symbol)
@@ -286,10 +336,22 @@ def scan_market(symbols, interval='1d', progress_callback=None):
                     df = stock_data.get(data_loader.nse_to_yahoo(symbol))
             
             if df is not None and not df.empty:
-                res_list = check_conditions(df, symbol, nifty_df=nifty_df)
+                # Apply Stage 1 Funnel (Liquidity & Age check)
+                if enable_inst_filters:
+                    passed, avg_turnover, age_days = check_liquidity_and_age(
+                        df, interval=interval, min_turnover=min_turnover_val, min_age_days=min_age_days
+                    )
+                    if not passed:
+                        filtered_symbols_count += 1
+                        continue
+                
+                res_list = check_conditions(df, symbol, nifty_df=nifty_df, regime_filter=regime_filter)
                 if res_list:
                     all_results.extend(res_list)
         except Exception as e:
             logger.debug(f"Error processing {symbol}: {e}")
+
+    if enable_inst_filters and filtered_symbols_count > 0:
+        logger.info(f"🏛️ Institutional Filters: Excluded {filtered_symbols_count} symbols due to daily turnover < ₹{min_turnover_crores} Cr or listing age < {min_age_days} days.")
 
     return pd.DataFrame(all_results)
