@@ -1,0 +1,252 @@
+import time
+import os
+import pytz
+import logging
+from datetime import datetime
+import pandas as pd
+import requests
+import scanner
+import data_loader
+import config
+import reporter
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+# Configuration for logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+logger = logging.getLogger(__name__)
+
+# Define IST timezone
+IST = pytz.timezone('Asia/Kolkata')
+
+# Secure Configuration from Secrets / Env Vars
+BOT_TOKEN = config.TELEGRAM_BOT_TOKEN
+CHAT_ID = config.TELEGRAM_CHAT_ID
+SCAN_UNIVERSE = config.SCAN_UNIVERSE
+SCAN_INTERVAL = config.SCAN_INTERVAL
+SEND_IF_EMPTY = config.SEND_IF_EMPTY
+LIVE_UNIVERSE_FETCH = config.LIVE_UNIVERSE_FETCH
+
+def validate_config():
+    """Ensure all required configuration is present."""
+    if not BOT_TOKEN or not CHAT_ID:
+        logger.error("🛑 CRITICAL: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set.")
+        return False
+    return True
+
+def send_telegram_message(message):
+    """Sends a text message via Telegram Bot API."""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.error(f"Error sending message to Telegram: {e}")
+
+def send_telegram_document(file_path, caption):
+    """Sends a document (CSV) via Telegram Bot API. Returns True if successful."""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+    try:
+        with open(file_path, 'rb') as doc:
+            files = {'document': doc}
+            data = {'chat_id': CHAT_ID, 'caption': caption, 'parse_mode': 'Markdown'}
+            response = requests.post(url, files=files, data=data, timeout=20)
+            if response.status_code != 200:
+                logger.error(f"Telegram API Error (sendDocument): {response.status_code} - {response.text}")
+                return False
+            return True
+    except Exception as e:
+        logger.error(f"Error sending document to Telegram: {e}")
+        return False
+
+def run_scan():
+    """Executes the stock scan and sends results to Telegram."""
+    now = datetime.now(IST)
+    
+    # Market Open Sync Guard
+    if now.hour == 9 and 15 <= now.minute < 16:
+        logger.info("Market just opened. Waiting 60s for data synchronization...")
+        time.sleep(60)
+        now = datetime.now(IST)
+        
+    logger.info(f"Starting Scan: {SCAN_UNIVERSE} ({SCAN_INTERVAL})")
+    
+    try:
+        # Resolve symbols using LIVE_UNIVERSE_FETCH configuration
+        if SCAN_UNIVERSE == "Nifty 500":
+            symbols = data_loader.get_nifty500_symbols(live_fetch=LIVE_UNIVERSE_FETCH)
+        elif SCAN_UNIVERSE == "Nifty 200":
+            symbols = data_loader.get_nifty200_symbols(live_fetch=LIVE_UNIVERSE_FETCH)
+        else:
+            symbols = data_loader.get_index_constituents(SCAN_UNIVERSE, live_fetch=LIVE_UNIVERSE_FETCH)
+        
+        if not symbols:
+            logger.warning(f"No symbols found for {SCAN_UNIVERSE}. Aborting scan.")
+            return
+
+        send_telegram_message(f"🔍 *NSE Scanner 2.0 Started:* {SCAN_UNIVERSE} ({SCAN_INTERVAL})\nScanning {len(symbols)} symbols...")
+        
+        # Execute scanner
+        results_df = scanner.scan_market(symbols, interval=SCAN_INTERVAL)
+        
+        if not results_df.empty:
+            results_df = results_df.sort_values(by='Signal Time', ascending=False)
+            
+            # Use Absolute Path for temporary CSV (Critical for system-level scheduling)
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            filename = f"scan_results_{now.strftime('%Y%m%d_%H%M%S')}.csv"
+            file_path = os.path.join(base_dir, filename)
+            
+            results_df.to_csv(file_path, index=False)
+            
+            # Generate Multi-Part Analysis Report
+            report_parts = reporter.generate_report(results_df, SCAN_UNIVERSE, SCAN_INTERVAL)
+            
+            # Send first part as document caption with Failsafe
+            if report_parts:
+                caption = report_parts[0]
+                success = send_telegram_document(file_path, caption)
+                
+                if not success:
+                    # FAILSAFE: If caption failed (too long or parse error), 
+                    # send file with simple title and Part 1 as a separate message.
+                    logger.warning("Caption upload failed. Triggering failsafe delivery...")
+                    simple_title = f"📊 Scan Results: {SCAN_UNIVERSE} ({now.strftime('%H:%M')})"
+                    send_telegram_document(file_path, simple_title)
+                    send_telegram_message(caption)
+                
+                # Send remaining parts as follow-up messages
+                for part in report_parts[1:]:
+                    send_telegram_message(part)
+            
+            logger.info(f"Results sent to Telegram: {len(results_df)} signals.")
+            
+            # Cleanup
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        else:
+            if SEND_IF_EMPTY:
+                msg = (
+                    f"ℹ️ *Scan Completed*\n"
+                    f"📊 *Universe:* {SCAN_UNIVERSE}\n"
+                    f"⏰ *Timeframe:* {SCAN_INTERVAL}\n"
+                    f"⚠️ No matches found at this time."
+                )
+                send_telegram_message(msg)
+            logger.info("Scan complete - 0 signals found.")
+                
+    except Exception as e:
+        logger.exception(f"Unexpected error in run_scan: {e}")
+        send_telegram_message(f"❌ *Scanner Error:* {str(e)}")
+
+def start_trigger_server():
+    trigger_port = config.TRIGGER_PORT
+
+    class TriggerHandler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            logger.info(f"HTTP Trigger Request: {args[0]} - {args[1]}")
+
+        def do_GET(self):
+            if self.path == '/trigger':
+                logger.info("External HTTP trigger received via GET /trigger. Initiating scan...")
+                threading.Thread(target=run_scan).start()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"status": "success", "message": "Market scan triggered"}')
+            else:
+                self.send_response(404)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"status": "error", "message": "Not Found"}')
+
+        def do_POST(self):
+            if self.path == '/trigger':
+                logger.info("External HTTP trigger received via POST /trigger. Initiating scan...")
+                threading.Thread(target=run_scan).start()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"status": "success", "message": "Market scan triggered"}')
+            else:
+                self.send_response(404)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"status": "error", "message": "Not Found"}')
+
+    def serve():
+        try:
+            server = HTTPServer(('0.0.0.0', trigger_port), TriggerHandler)
+            logger.info(f"🚀 Trigger Server listening on http://0.0.0.0:{trigger_port}/trigger")
+            server.serve_forever()
+        except Exception as e:
+            logger.error(f"Trigger Server error: {e}")
+
+    t = threading.Thread(target=serve, daemon=True)
+    t.start()
+
+def main():
+    if not validate_config():
+        logger.error("Configuration validation failed. Exiting.")
+        return
+
+    # Start trigger server for VPS/cron-job.org HTTP webhook support
+    if os.environ.get("GITHUB_ACTIONS") != "true" and os.environ.get("ONCE") != "1":
+        start_trigger_server()
+
+    logger.info("========================================")
+    logger.info(" NSE Stock Scanner 2.0 - Automation Bot ")
+    logger.info("========================================")
+    logger.info(f"Universe: {SCAN_UNIVERSE} | Interval: {SCAN_INTERVAL} | Live Universe Fetch: {LIVE_UNIVERSE_FETCH}")
+    
+    # Check for immediate run
+    if os.environ.get("TEST_RUN") == "1" or os.environ.get("GITHUB_ACTIONS") == "true":
+        logger.info("Triggering initial scan (TEST_RUN/CI)...")
+        run_scan()
+        if os.environ.get("ONCE") == "1" or os.environ.get("GITHUB_ACTIONS") == "true":
+            return
+
+    # Specific Schedule: 9:16, 10:16, ..., 15:16 (3:16 PM)
+    SCHEDULED_HOURS = [9, 10, 11, 12, 13, 14, 15]
+    SCHEDULE_MINUTE = 16
+    
+    last_run_id = None # Format: "YYYY-MM-DD-HH"
+
+    while True:
+        try:
+            now = datetime.now(IST)
+            is_weekday = now.weekday() < 5 # 0=Mon, 4=Fri
+            
+            if is_weekday:
+                current_run_id = now.strftime("%Y-%m-%d-%H")
+                
+                # Check if current hour and minute match our target
+                if now.hour in SCHEDULED_HOURS and now.minute == SCHEDULE_MINUTE:
+                    if last_run_id != current_run_id:
+                        logger.info(f"Target time reached: {now.strftime('%H:%M')}. Starting scheduled scan.")
+                        run_scan()
+                        last_run_id = current_run_id
+                
+                # Close message/reset at end of day
+                elif now.hour == 15 and now.minute > SCHEDULE_MINUTE and last_run_id == current_run_id:
+                    logger.info("Market session processing complete for today.")
+                    last_run_id = f"{current_run_id}-CLOSED" # Prevent re-trigger if restarted
+                    
+            # Daily reset for last_run_id if needed (though current_run_id handles it)
+            if now.hour == 0 and now.minute == 0:
+                last_run_id = None
+                
+        except Exception as e:
+            logger.error(f"Error in main loop: {e}")
+            time.sleep(60)
+            
+        time.sleep(30)
+
+if __name__ == "__main__":
+    main()

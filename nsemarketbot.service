@@ -1,0 +1,15 @@
+[Unit]
+Description=NSE Market Scanner Bot
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/mohan/.gemini/antigravity/scratch/nse2_automation/
+ExecStart=/home/mohan/.gemini/antigravity/scratch/nse2_automation/venv/bin/python3 automation_bot.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
