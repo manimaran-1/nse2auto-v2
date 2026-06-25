@@ -65,6 +65,7 @@ def generate_report(df, universe, timeframe):
     
     # --- PROBABILITY RANKING — Refined V3 Enhanced 5-Factor Model ---
     top_trades_list = []
+    top_classic_list = []
     if 'Day Open' in unique_df.columns:
         unique_df['Change_Pct'] = ((unique_df['LTP'] - unique_df['Day Open']) / unique_df['Day Open']) * 100
 
@@ -108,14 +109,30 @@ def generate_report(df, universe, timeframe):
         vol_effective = unique_df['Volatility'].clip(lower=0.5)
         rs_score = (unique_df['Rel Strength'] / (vol_effective * 2.0)).clip(0, 1.0) * 15
 
-        unique_df['Prob_Score'] = (
+        unique_df['Enhanced_Score'] = (
             change_score + smi_score + macd_score + rvol_score + rs_score
         ).fillna(0).clip(0, 100)
 
-        top_ranked = unique_df.nlargest(10, 'Prob_Score')
-        for _, row in top_ranked.iterrows():
+        unique_df['Classic_Score'] = (
+            unique_df['Change_Pct'].clip(0, 5) / 5 * 40
+            + unique_df['SMI'].clip(0, 100) / 100 * 30
+            + unique_df['MACD'].clip(0, 5) / 5 * 30
+        ).fillna(0).clip(0, 100)
+
+        # 1. Top 10 Enhanced V3 Trades
+        top_ranked_enhanced = unique_df.nlargest(10, 'Enhanced_Score')
+        for _, row in top_ranked_enhanced.iterrows():
+            diff = row['Enhanced_Score'] - row['Classic_Score']
+            sign = "+" if diff >= 0 else ""
             top_trades_list.append(
-                f"👉 💎 *{row['Stock Name']}* (Score: {row['Prob_Score']:.1f})"
+                f"• *{row['Stock Name']}* | Enhanced: *{row['Enhanced_Score']:.1f}* | Classic: {row['Classic_Score']:.1f} (Δ: {sign}{diff:.1f})"
+            )
+
+        # 2. Top 10 Classic 3-Factor Trades
+        top_ranked_classic = unique_df.nlargest(10, 'Classic_Score')
+        for _, row in top_ranked_classic.iterrows():
+            top_classic_list.append(
+                f"• *{row['Stock Name']}* | Classic: *{row['Classic_Score']:.1f}* | Enhanced: {row['Enhanced_Score']:.1f}"
             )
 
 
@@ -197,9 +214,13 @@ def generate_report(df, universe, timeframe):
     part1_chunks = split_list_to_chunks(p1_lines, 900)
 
     # --- BUILD PART 2 LINES ---
-    p2_lines = [
-        f"🏅 *MULTI-CATEGORY LEADERS*"
-    ]
+    p2_lines = []
+    if top_classic_list:
+        p2_lines.append(f"🏆 *TOP 10 CLASSIC 3-FACTOR TRADES*")
+        p2_lines.extend(top_classic_list)
+        p2_lines.append(f"----------------------------------------")
+    
+    p2_lines.append(f"🏅 *MULTI-CATEGORY LEADERS*")
     if super_signals:
         p2_lines.extend(super_signals)
     else:
