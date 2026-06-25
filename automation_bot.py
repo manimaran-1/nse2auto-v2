@@ -51,6 +51,26 @@ def send_telegram_message(message):
     except Exception as e:
         logger.error(f"Error sending message to Telegram: {e}")
 
+def send_split_telegram_message(title, lines, limit=3500):
+    """Groups lines and sends them as one or more Telegram messages under the character limit."""
+    current_chunk = [title] if title else []
+    current_length = sum(len(l) + 1 for l in current_chunk)
+    
+    for line in lines:
+        line_len = len(line) + 1
+        if current_length + line_len > limit:
+            if current_chunk:
+                send_telegram_message("\n".join(current_chunk))
+            current_chunk = [title + " (Cont.)"] if title else []
+            current_chunk.append(line)
+            current_length = sum(len(l) + 1 for l in current_chunk)
+        else:
+            current_chunk.append(line)
+            current_length += line_len
+            
+    if current_chunk:
+        send_telegram_message("\n".join(current_chunk))
+
 def send_telegram_document(file_path, caption):
     """Sends a document (CSV) via Telegram Bot API. Returns True if successful."""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
@@ -165,6 +185,10 @@ def run_scan():
         # Send tracker summary
         state = signal_tracker.load_tracker()
         active_sigs = [s for s in state["active"] if s.get("universe") == SCAN_UNIVERSE and s.get("timeframe") == SCAN_INTERVAL]
+        completed_sigs = state.get("completed", [])
+        
+        # Sort active signals by unrealised return descending
+        active_sigs = sorted(active_sigs, key=lambda x: ((x["last_price"] - x["entry_price"]) / x["entry_price"]), reverse=True)
         
         tracker_lines = []
         if new_entries:
@@ -174,14 +198,38 @@ def run_scan():
             tracker_lines.append("")
             
         if active_sigs:
-            tracker_lines.append("📊 *ACTIVE SIGNALS TRACKER*")
-            for sig in active_sigs:
+            tracker_lines.append("📊 *ACTIVE SIGNALS TRACKER (Top 15)*")
+            for sig in active_sigs[:15]:
                 unrealised = ((sig["last_price"] - sig["entry_price"]) / sig["entry_price"]) * 100
                 sign = "+" if unrealised >= 0 else ""
                 tracker_lines.append(f"• *{sig['symbol']}* | Entry: ₹{sig['entry_price']:.2f} → Current: ₹{sig['last_price']:.2f} (Return: *{sign}{unrealised:.2f}%*)")
+            
+            if len(active_sigs) > 15:
+                tracker_lines.append(f"• ... and {len(active_sigs) - 15} more active signals. View full tracker on Streamlit.")
+            tracker_lines.append("")
+            
+        # Add Backtest Performance Report
+        if completed_sigs:
+            univ_completed = [s for s in completed_sigs if s.get("universe") == SCAN_UNIVERSE and s.get("timeframe") == SCAN_INTERVAL]
+            if univ_completed:
+                df_c = pd.DataFrame(univ_completed)
+                total_c = len(df_c)
+                wins = df_c[df_c["return_pct"] >= 0]
+                win_rate = (len(wins) / total_c) * 100
+                avg_ret = df_c["return_pct"].mean()
+                
+                gains = df_c[df_c["return_pct"] > 0]["return_pct"].sum()
+                losses = abs(df_c[df_c["return_pct"] < 0]["return_pct"].sum())
+                profit_factor = gains / losses if losses > 0 else (gains if gains > 0 else 1.0)
+                
+                tracker_lines.append("📈 *BACKTEST PERFORMANCE SUMMARY*")
+                tracker_lines.append(f"• Total Closed Trades: *{total_c}*")
+                tracker_lines.append(f"• Win Rate: *{win_rate:.1f}%*")
+                tracker_lines.append(f"• Average Return: *{avg_ret:+.2f}%*")
+                tracker_lines.append(f"• Profit Factor: *{profit_factor:.2f}*")
         
         if tracker_lines:
-            send_telegram_message("\n".join(tracker_lines))
+            send_split_telegram_message("📋 *NSE Tracker & Backtest Report*", tracker_lines, limit=3500)
                 
     except Exception as e:
         logger.exception(f"Unexpected error in run_scan: {e}")

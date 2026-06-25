@@ -737,17 +737,59 @@ def send_to_telegram(df: pd.DataFrame, universe: str, timeframe: str) -> bool:
         import signal_tracker
         state = signal_tracker.load_tracker()
         active_sigs = [s for s in state["active"] if s.get("universe") == universe and s.get("timeframe") == timeframe]
+        completed_sigs = state.get("completed", [])
+        
+        # Sort active signals by unrealised return descending
+        active_sigs = sorted(active_sigs, key=lambda x: ((x["last_price"] - x["entry_price"]) / x["entry_price"]), reverse=True)
         
         tracker_lines = []
         if active_sigs:
-            tracker_lines.append("📊 *ACTIVE SIGNALS TRACKER*")
-            for sig in active_sigs:
+            tracker_lines.append("📊 *ACTIVE SIGNALS TRACKER (Top 15)*")
+            for sig in active_sigs[:15]:
                 unrealised = ((sig["last_price"] - sig["entry_price"]) / sig["entry_price"]) * 100
                 sign = "+" if unrealised >= 0 else ""
                 tracker_lines.append(f"• *{sig['symbol']}* | Entry: ₹{sig['entry_price']:.2f} → Current: ₹{sig['last_price']:.2f} (Return: *{sign}{unrealised:.2f}%*)")
+            
+            if len(active_sigs) > 15:
+                tracker_lines.append(f"• ... and {len(active_sigs) - 15} more active signals. View full tracker on Streamlit.")
+            tracker_lines.append("")
+            
+        # Add Backtest Performance Report
+        if completed_sigs:
+            univ_completed = [s for s in completed_sigs if s.get("universe") == universe and s.get("timeframe") == timeframe]
+            if univ_completed:
+                df_c = pd.DataFrame(univ_completed)
+                total_c = len(df_c)
+                wins = df_c[df_c["return_pct"] >= 0]
+                win_rate = (len(wins) / total_c) * 100
+                avg_ret = df_c["return_pct"].mean()
+                
+                gains = df_c[df_c["return_pct"] > 0]["return_pct"].sum()
+                losses = abs(df_c[df_c["return_pct"] < 0]["return_pct"].sum())
+                profit_factor = gains / losses if losses > 0 else (gains if gains > 0 else 1.0)
+                
+                tracker_lines.append("📈 *BACKTEST PERFORMANCE SUMMARY*")
+                tracker_lines.append(f"• Total Closed Trades: *{total_c}*")
+                tracker_lines.append(f"• Win Rate: *{win_rate:.1f}%*")
+                tracker_lines.append(f"• Average Return: *{avg_ret:+.2f}%*")
+                tracker_lines.append(f"• Profit Factor: *{profit_factor:.2f}*")
         
         if tracker_lines:
-            requests.post(msg_url, json={"chat_id": CHAT_ID, "text": "\n".join(tracker_lines), "parse_mode": "Markdown"}, timeout=15)
+            # Safe chunked sending
+            current_chunk = ["📋 *NSE Tracker & Backtest Report*"]
+            current_length = sum(len(l) + 1 for l in current_chunk)
+            for line in tracker_lines:
+                line_len = len(line) + 1
+                if current_length + line_len > 3500:
+                    requests.post(msg_url, json={"chat_id": CHAT_ID, "text": "\n".join(current_chunk), "parse_mode": "Markdown"}, timeout=15)
+                    current_chunk = ["📋 *NSE Tracker & Backtest Report (Cont.)*"]
+                    current_chunk.append(line)
+                    current_length = sum(len(l) + 1 for l in current_chunk)
+                else:
+                    current_chunk.append(line)
+                    current_length += line_len
+            if current_chunk:
+                requests.post(msg_url, json={"chat_id": CHAT_ID, "text": "\n".join(current_chunk), "parse_mode": "Markdown"}, timeout=15)
             
         return True
     except Exception as e:
