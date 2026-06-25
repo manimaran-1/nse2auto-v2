@@ -43,7 +43,7 @@ def validate_config():
     return True
 
 def send_telegram_message(message):
-    """Sends a text message via Telegram Bot API."""
+    """Sends a text message via Telegram Bot API with fallback on Markdown parse errors."""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
@@ -55,10 +55,17 @@ def send_telegram_message(message):
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        logger.error(f"Error sending message to Telegram: {e}")
+        logger.warning(f"Failed to send Telegram message with Markdown: {e}. Retrying as plain text...")
+        payload.pop("parse_mode", None)
+        try:
+            response = requests.post(url, json=payload, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except Exception as retry_err:
+            logger.error(f"Error sending plain text message to Telegram: {retry_err}")
 
 def send_telegram_document(file_path, caption):
-    """Sends a document (CSV) via Telegram Bot API. Returns True if successful."""
+    """Sends a document (CSV) via Telegram Bot API with fallback on Markdown parse errors."""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
     try:
         with open(file_path, 'rb') as doc:
@@ -66,8 +73,13 @@ def send_telegram_document(file_path, caption):
             data = {'chat_id': CHAT_ID, 'caption': caption, 'parse_mode': 'Markdown'}
             response = requests.post(url, files=files, data=data, timeout=20)
             if response.status_code != 200:
-                logger.error(f"Telegram API Error (sendDocument): {response.status_code} - {response.text}")
-                return False
+                logger.warning(f"Telegram API Error (sendDocument Markdown): {response.status_code} - {response.text}. Retrying without parse_mode...")
+                doc.seek(0)
+                data.pop('parse_mode', None)
+                response = requests.post(url, files=files, data=data, timeout=20)
+                if response.status_code != 200:
+                    logger.error(f"Telegram API Error (sendDocument plain text): {response.status_code} - {response.text}")
+                    return False
             return True
     except Exception as e:
         logger.error(f"Error sending document to Telegram: {e}")
@@ -151,7 +163,7 @@ def run_scan():
             for df_subset, universe_label, limit in datasets:
                 df_subset = df_subset.sort_values(by='Signal Time', ascending=False)
                 # Sanitize filename
-                safe_label = universe_label.replace(' ', '_').replace('(', '').replace(')', '')
+                safe_label = universe_label.replace(' ', '_').replace('(', '').replace(')', '').replace('/', '_')
                 filename = f"scan_results_{safe_label}_{now.strftime('%Y%m%d_%H%M%S')}.csv"
                 file_path = os.path.join(base_dir, filename)
                 

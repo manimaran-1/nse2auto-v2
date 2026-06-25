@@ -589,16 +589,26 @@ def send_to_telegram(df: pd.DataFrame, universe: str, timeframe: str) -> bool:
 
             resp = requests.post(doc_url, files=files, data=data, timeout=20)
             if resp.status_code != 200:
-                st.error(f"Telegram Error (Doc): {resp.text}")
-                return False
+                # Fallback: Retry sending document without Markdown formatting
+                data.pop("parse_mode", None)
+                resp = requests.post(doc_url, files=files, data=data, timeout=20)
+                if resp.status_code != 200:
+                    st.error(f"Telegram Error (Doc): {resp.text}")
+                    return False
         else:
             resp = requests.post(msg_url, json={"chat_id": CHAT_ID, "text": report_parts[0], "parse_mode": "Markdown"}, timeout=15)
             if resp.status_code != 200:
-                st.error(f"Telegram Error: {resp.text}")
-                return False
+                # Fallback: Retry sending text without Markdown formatting
+                resp = requests.post(msg_url, json={"chat_id": CHAT_ID, "text": report_parts[0]}, timeout=15)
+                if resp.status_code != 200:
+                    st.error(f"Telegram Error: {resp.text}")
+                    return False
 
         for part in report_parts[1:]:
-            requests.post(msg_url, json={"chat_id": CHAT_ID, "text": part, "parse_mode": "Markdown"}, timeout=15)
+            r = requests.post(msg_url, json={"chat_id": CHAT_ID, "text": part, "parse_mode": "Markdown"}, timeout=15)
+            if r.status_code != 200:
+                # Fallback: Retry sending text without Markdown formatting
+                requests.post(msg_url, json={"chat_id": CHAT_ID, "text": part}, timeout=15)
         return True
     except Exception as e:
         st.error(f"Failed to send to Telegram: {e}")
