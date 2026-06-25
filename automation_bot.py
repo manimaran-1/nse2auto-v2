@@ -124,39 +124,49 @@ def run_scan():
         )
         
         if not results_df.empty:
-            # Resolve Nifty 50, Nifty Next 50, and Nifty 500 symbols
-            nifty50_raw = data_loader.get_nifty50_symbols(live_fetch=LIVE_UNIVERSE_FETCH)
-            nifty50_set = {s.replace("NSE:", "").replace("-EQ", "") for s in nifty50_raw}
-            
-            niftynext50_raw = data_loader.get_index_constituents("Nifty Next 50", live_fetch=LIVE_UNIVERSE_FETCH)
-            niftynext50_set = {s.replace("NSE:", "").replace("-EQ", "") for s in niftynext50_raw}
-            
-            nifty500_raw = data_loader.get_nifty500_symbols(live_fetch=LIVE_UNIVERSE_FETCH)
-            nifty500_set = {s.replace("NSE:", "").replace("-EQ", "") for s in nifty500_raw}
-            
-            nifty50_df = results_df[results_df['Stock Name'].isin(nifty50_set)]
-            niftynext50_df = results_df[results_df['Stock Name'].isin(niftynext50_set)]
-            midsmall_df = results_df[
-                results_df['Stock Name'].isin(nifty500_set)
-                & ~results_df['Stock Name'].isin(nifty50_set)
-                & ~results_df['Stock Name'].isin(niftynext50_set)
-            ]
-            other_df = results_df[~results_df['Stock Name'].isin(nifty500_set)]
-            
             datasets = []
             if SCAN_UNIVERSE in ["Nifty 500", "Nifty 200", "Nifty 50", "Nifty Bank", "Nifty IT", "Nifty PSU Bank", "Nifty Private Bank", "Nifty 100", "Nifty Next 50"]:
                 # If we're scanning a universe that's already a subset of Nifty 500, don't split
                 datasets.append((results_df, SCAN_UNIVERSE, 20))
             else:
                 # We are scanning Total Cash Segment or another large universe
-                if not nifty50_df.empty:
-                    datasets.append((nifty50_df, f"Nifty 50", 10))
-                if not niftynext50_df.empty:
-                    datasets.append((niftynext50_df, f"Nifty Next 50", 10))
-                if not midsmall_df.empty:
-                    datasets.append((midsmall_df, f"Nifty Mid/Smallcap", 10))
+                cat_to_symbols = data_loader.get_all_categories_and_symbols()
+                covered_stocks = set()
+                
+                # Prioritize standard indexes so they appear first in the reports list
+                priorities = {'50': 0, 'Next 50': 1, '100': 2, '200': 3, 'nse500': 4, 'mid': 5, 'small': 6}
+                sorted_cats = sorted(cat_to_symbols.keys(), key=lambda c: (priorities.get(c, 99), c))
+                
+                for cat in sorted_cats:
+                    cat_symbols = cat_to_symbols[cat]
+                    cat_df = results_df[results_df['Stock Name'].isin(cat_symbols)]
+                    if not cat_df.empty:
+                        # User-friendly label formatting
+                        if cat == '50':
+                            lbl = "Nifty 50"
+                        elif cat == 'Next 50':
+                            lbl = "Nifty Next 50"
+                        elif cat == '100':
+                            lbl = "Nifty 100"
+                        elif cat == '200':
+                            lbl = "Nifty 200"
+                        elif cat == 'nse500':
+                            lbl = "Nifty 500"
+                        elif cat == 'mid':
+                            lbl = "Nifty Midcap"
+                        elif cat == 'small':
+                            lbl = "Nifty Smallcap"
+                        else:
+                            display_cat = "IT" if cat.upper() == "IT" else cat
+                            lbl = f"Nifty {display_cat}"
+                        
+                        datasets.append((cat_df, lbl, 10))
+                        covered_stocks.update(cat_df['Stock Name'].tolist())
+                
+                # Any stock not in any category goes to "Other Cash Segment"
+                other_df = results_df[~results_df['Stock Name'].isin(covered_stocks)]
                 if not other_df.empty:
-                    datasets.append((other_df, f"Other Cash Segment", 10))
+                    datasets.append((other_df, "Other Cash Segment", 10))
             
             base_dir = os.path.dirname(os.path.abspath(__file__))
             

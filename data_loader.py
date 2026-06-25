@@ -864,3 +864,15 @@ def get_stock_categories_string(symbol):
     
     return ", ".join(sorted_cats) if sorted_cats else "Other"
 
+
+def get_all_categories_and_symbols():
+    load_all_categories()
+    cat_to_symbols = {}
+    for sym, cats in _symbol_to_categories.items():
+        for cat in cats:
+            if cat not in cat_to_symbols:
+                cat_to_symbols[cat] = set()
+            cat_to_symbols[cat].add(sym)
+    return cat_to_symbols
+
+
