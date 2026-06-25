@@ -448,6 +448,164 @@ with st.sidebar.expander("📈 Market Status", expanded=False):
     else:
         st.warning(f"🔴 NSE: Closed\n\n({current_day}, {current_time_ist} IST)")
 
+st.sidebar.header("Navigation")
+app_mode = st.sidebar.radio("Select View", ["🔍 Scan Dashboard", "📈 Active Tracker & Backtests"], index=0)
+
+if app_mode == "📈 Active Tracker & Backtests":
+    import signal_tracker
+    st.markdown("## 📈 Signal Tracker & Backtests")
+    st.markdown("Track and backtest the performance of scanned stocks from entry to dropout.")
+    
+    state = signal_tracker.load_tracker()
+    active_list = state.get("active", [])
+    completed_list = state.get("completed", [])
+    
+    # Render Reset Control in expander for safety
+    with st.sidebar.expander("⚙️ Tracker Settings"):
+        st.warning("Resetting the tracker will delete all active positions and historical backtest logs.")
+        confirm_reset = st.checkbox("Confirm Reset")
+        if st.button("🗑️ Reset Tracker Database", disabled=not confirm_reset):
+            signal_tracker.reset_tracker()
+            st.success("Tracker database reset successfully!")
+            st.rerun()
+
+    # Calculate statistics
+    total_active = len(active_list)
+    total_completed = len(completed_list)
+    total_trades = total_active + total_completed
+    
+    # Performance Stats
+    if total_completed > 0:
+        df_comp = pd.DataFrame(completed_list)
+        wins = df_comp[df_comp["return_pct"] >= 0]
+        win_rate = (len(wins) / total_completed) * 100
+        avg_ret = df_comp["return_pct"].mean()
+        
+        gains = df_comp[df_comp["return_pct"] > 0]["return_pct"].sum()
+        losses = abs(df_comp[df_comp["return_pct"] < 0]["return_pct"].sum())
+        profit_factor = gains / losses if losses > 0 else (gains if gains > 0 else 1.0)
+        
+        avg_duration = df_comp["duration_days"].mean()
+    else:
+        win_rate = 0.0
+        avg_ret = 0.0
+        profit_factor = 1.0
+        avg_duration = 0.0
+
+    # Display KPI Cards
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Trades", total_trades, f"{total_active} Active / {total_completed} Closed")
+    with col2:
+        st.metric("Win Rate", f"{win_rate:.1f}%", help="Percentage of closed trades with positive return")
+    with col3:
+        st.metric("Avg Return", f"{avg_ret:+.2f}%")
+    with col4:
+        st.metric("Profit Factor", f"{profit_factor:.2f}", help="Gross profits divided by gross losses")
+
+    st.markdown("---")
+    
+    # Open Signals Tab and Closed Signals Tab
+    tab_active, tab_completed = st.tabs(["🟢 Open Signals (Active Positions)", "🔴 Closed Signals (Backtest Log)"])
+    
+    with tab_active:
+        st.subheader("🟢 Active Positions")
+        if active_list:
+            df_act = pd.DataFrame(active_list)
+            # Calculate current return
+            df_act["current_return_pct"] = ((df_act["last_price"] - df_act["entry_price"]) / df_act["entry_price"]) * 100
+            
+            # Format and rename columns
+            df_act_disp = df_act.rename(columns={
+                "symbol": "Symbol",
+                "universe": "Universe",
+                "timeframe": "Timeframe",
+                "entry_date": "Entry Date",
+                "entry_price": "Entry Price (₹)",
+                "last_price": "LTP (₹)",
+                "highest_price": "Max High (₹)",
+                "lowest_price": "Max Low (₹)",
+                "current_return_pct": "Unrealised Return (%)",
+                "score_3_factor": "Classic Score",
+                "score_5_factor": "Enhanced Score"
+            })
+            
+            # Allow sorting, searching and filtering
+            search_query = st.text_input("🔍 Search Active Stocks", "")
+            if search_query:
+                df_act_disp = df_act_disp[df_act_disp["Symbol"].str.contains(search_query, case=False)]
+                
+            st.dataframe(
+                df_act_disp[[
+                    "Symbol", "Universe", "Timeframe", "Entry Date", "Entry Price (₹)", 
+                    "LTP (₹)", "Max High (₹)", "Max Low (₹)", "Unrealised Return (%)", 
+                    "Classic Score", "Enhanced Score"
+                ]],
+                column_config={
+                    "Entry Price (₹)": st.column_config.NumberColumn(format="₹ %.2f"),
+                    "LTP (₹)": st.column_config.NumberColumn(format="₹ %.2f"),
+                    "Max High (₹)": st.column_config.NumberColumn(format="₹ %.2f"),
+                    "Max Low (₹)": st.column_config.NumberColumn(format="₹ %.2f"),
+                    "Unrealised Return (%)": st.column_config.NumberColumn(format="%.2f%%"),
+                    "Classic Score": st.column_config.NumberColumn(format="%.1f"),
+                    "Enhanced Score": st.column_config.NumberColumn(format="%.1f")
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+        else:
+            st.info("No active signals currently tracked.")
+            
+    with tab_completed:
+        st.subheader("🔴 Exited Signals & Backtest Log")
+        if completed_list:
+            df_comp = pd.DataFrame(completed_list)
+            
+            # Format and rename columns
+            df_comp_disp = df_comp.rename(columns={
+                "symbol": "Symbol",
+                "universe": "Universe",
+                "timeframe": "Timeframe",
+                "entry_date": "Entry Date",
+                "exit_date": "Exit Date",
+                "entry_price": "Entry Price (₹)",
+                "exit_price": "Exit Price (₹)",
+                "highest_price": "Max High (₹)",
+                "lowest_price": "Max Low (₹)",
+                "return_pct": "Return (%)",
+                "max_runup_pct": "Max Run-up (%)",
+                "max_drawdown_pct": "Max Drawdown (%)",
+                "duration_days": "Duration (Days)"
+            })
+            
+            search_query_comp = st.text_input("🔍 Search Exited Stocks", "")
+            if search_query_comp:
+                df_comp_disp = df_comp_disp[df_comp_disp["Symbol"].str.contains(search_query_comp, case=False)]
+                
+            st.dataframe(
+                df_comp_disp[[
+                    "Symbol", "Universe", "Timeframe", "Entry Date", "Exit Date", 
+                    "Entry Price (₹)", "Exit Price (₹)", "Max High (₹)", "Max Low (₹)",
+                    "Return (%)", "Max Run-up (%)", "Max Drawdown (%)", "Duration (Days)"
+                ]],
+                column_config={
+                    "Entry Price (₹)": st.column_config.NumberColumn(format="₹ %.2f"),
+                    "Exit Price (₹)": st.column_config.NumberColumn(format="₹ %.2f"),
+                    "Max High (₹)": st.column_config.NumberColumn(format="₹ %.2f"),
+                    "Max Low (₹)": st.column_config.NumberColumn(format="₹ %.2f"),
+                    "Return (%)": st.column_config.NumberColumn(format="%.2f%%"),
+                    "Max Run-up (%)": st.column_config.NumberColumn(format="%.2f%%"),
+                    "Max Drawdown (%)": st.column_config.NumberColumn(format="%.2f%%"),
+                    "Duration (Days)": st.column_config.NumberColumn(format="%.2f days")
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+        else:
+            st.info("No exited signals logged in the backtest database yet.")
+            
+    st.stop()
+
 st.sidebar.header("Scan Setup")
 indices_dict = data_loader.get_all_indices_dict()
 universe_options = list(indices_dict.keys()) + ["Custom List"]
@@ -574,6 +732,23 @@ def send_to_telegram(df: pd.DataFrame, universe: str, timeframe: str) -> bool:
 
         for part in report_parts[1:]:
             requests.post(msg_url, json={"chat_id": CHAT_ID, "text": part, "parse_mode": "Markdown"}, timeout=15)
+            
+        # Send active tracker summary
+        import signal_tracker
+        state = signal_tracker.load_tracker()
+        active_sigs = [s for s in state["active"] if s.get("universe") == universe and s.get("timeframe") == timeframe]
+        
+        tracker_lines = []
+        if active_sigs:
+            tracker_lines.append("📊 *ACTIVE SIGNALS TRACKER*")
+            for sig in active_sigs:
+                unrealised = ((sig["last_price"] - sig["entry_price"]) / sig["entry_price"]) * 100
+                sign = "+" if unrealised >= 0 else ""
+                tracker_lines.append(f"• *{sig['symbol']}* | Entry: ₹{sig['entry_price']:.2f} → Current: ₹{sig['last_price']:.2f} (Return: *{sign}{unrealised:.2f}%*)")
+        
+        if tracker_lines:
+            requests.post(msg_url, json={"chat_id": CHAT_ID, "text": "\n".join(tracker_lines), "parse_mode": "Markdown"}, timeout=15)
+            
         return True
     except Exception as e:
         st.error(f"Failed to send to Telegram: {e}")
@@ -686,6 +861,28 @@ if st.button("🚀 Start Market Scan", width="stretch"):
                 )
             else:
                 st.session_state.results_df = "EMPTY"
+
+            # Update signal tracker
+            import signal_tracker
+            new_entries, new_exits = signal_tracker.update_tracker(results_df, selected_universe, selected_timeframe)
+            
+            # Send immediate notifications for exited positions if any
+            if new_exits and BOT_TOKEN and CHAT_ID:
+                exit_msgs = ["🔴 *SIGNAL COMPLETED (DROPPED OUT)*"]
+                for ex in new_exits:
+                    ret_sign = "+" if ex["return_pct"] >= 0 else ""
+                    ru_sign = "+" if ex["max_runup_pct"] >= 0 else ""
+                    dd_sign = "+" if ex["max_drawdown_pct"] >= 0 else ""
+                    exit_msgs.append(
+                        f"• *{ex['symbol']}* | Entry: ₹{ex['entry_price']:.2f} ({ex['entry_date']}) "
+                        f"→ Exit: ₹{ex['exit_price']:.2f}\n"
+                        f"  Return: *{ret_sign}{ex['return_pct']:.2f}%* | Max Run-up: {ru_sign}{ex['max_runup_pct']:.2f}% | Max DD: {dd_sign}{ex['max_drawdown_pct']:.2f}% | Duration: {ex['duration_days']:.1f} days"
+                    )
+                msg_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+                try:
+                    requests.post(msg_url, json={"chat_id": CHAT_ID, "text": "\n".join(exit_msgs), "parse_mode": "Markdown"}, timeout=15)
+                except Exception as e:
+                    pass
 
 # ---------------------------------------------------------------------------
 # PERSISTENT RESULTS DISPLAY

@@ -97,6 +97,24 @@ def run_scan():
         # Execute scanner
         results_df = scanner.scan_market(symbols, interval=SCAN_INTERVAL)
         
+        # Update signal tracker
+        import signal_tracker
+        new_entries, new_exits = signal_tracker.update_tracker(results_df, SCAN_UNIVERSE, SCAN_INTERVAL)
+        
+        # Immediate notification for exits
+        if new_exits:
+            exit_msgs = ["🔴 *SIGNAL COMPLETED (DROPPED OUT)*"]
+            for ex in new_exits:
+                ret_sign = "+" if ex["return_pct"] >= 0 else ""
+                ru_sign = "+" if ex["max_runup_pct"] >= 0 else ""
+                dd_sign = "+" if ex["max_drawdown_pct"] >= 0 else ""
+                exit_msgs.append(
+                    f"• *{ex['symbol']}* | Entry: ₹{ex['entry_price']:.2f} ({ex['entry_date']}) "
+                    f"→ Exit: ₹{ex['exit_price']:.2f}\n"
+                    f"  Return: *{ret_sign}{ex['return_pct']:.2f}%* | Max Run-up: {ru_sign}{ex['max_runup_pct']:.2f}% | Max DD: {dd_sign}{ex['max_drawdown_pct']:.2f}% | Duration: {ex['duration_days']:.1f} days"
+                )
+            send_telegram_message("\n".join(exit_msgs))
+        
         if not results_df.empty:
             results_df = results_df.sort_values(by='Signal Time', ascending=False)
             
@@ -143,6 +161,27 @@ def run_scan():
                 )
                 send_telegram_message(msg)
             logger.info("Scan complete - 0 signals found.")
+            
+        # Send tracker summary
+        state = signal_tracker.load_tracker()
+        active_sigs = [s for s in state["active"] if s.get("universe") == SCAN_UNIVERSE and s.get("timeframe") == SCAN_INTERVAL]
+        
+        tracker_lines = []
+        if new_entries:
+            tracker_lines.append("🟢 *NEW ACTIVE SIGNALS*")
+            for ent in new_entries:
+                tracker_lines.append(f"• *{ent['symbol']}* | Entry: ₹{ent['entry_price']:.2f} | 3F Score: {ent['score_3_factor']:.1f} | 5F Score: {ent['score_5_factor']:.1f}")
+            tracker_lines.append("")
+            
+        if active_sigs:
+            tracker_lines.append("📊 *ACTIVE SIGNALS TRACKER*")
+            for sig in active_sigs:
+                unrealised = ((sig["last_price"] - sig["entry_price"]) / sig["entry_price"]) * 100
+                sign = "+" if unrealised >= 0 else ""
+                tracker_lines.append(f"• *{sig['symbol']}* | Entry: ₹{sig['entry_price']:.2f} → Current: ₹{sig['last_price']:.2f} (Return: *{sign}{unrealised:.2f}%*)")
+        
+        if tracker_lines:
+            send_telegram_message("\n".join(tracker_lines))
                 
     except Exception as e:
         logger.exception(f"Unexpected error in run_scan: {e}")
